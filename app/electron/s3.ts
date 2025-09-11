@@ -3,6 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import type { ListObjectsParams, ListObjectsResult, S3InitParams, ProfileInfo } from './types'
+import { getLogger } from './log'
 
 let client: S3Client | null = null
 let currentProfile: string | undefined
@@ -10,7 +11,7 @@ let overrideCredsPath: string | undefined
 let overrideConfigPath: string | undefined
 
 function ensureClient() {
-  if (!client) client = new S3Client({})
+  if (!client) throw new Error('S3 client not initialized. Connect to a profile first.')
   return client
 }
 
@@ -18,11 +19,14 @@ export async function init(params: S3InitParams) {
   currentProfile = params.profile
   process.env.AWS_SDK_LOAD_CONFIG = '1'
   if (currentProfile) process.env.AWS_PROFILE = currentProfile
+  // Clear any previous client so calls after a failed init don't use a stale client
+  client = null
   const region = await resolveRegion(currentProfile)
   if (!region) {
     throw new Error(`Could not resolve region${currentProfile ? ` for profile "${currentProfile}"` : ''}. Set region in ~/.aws/config or credentials, or export AWS_REGION.`)
   }
   client = new S3Client({ region })
+  getLogger().info('aws', 's3 client initialized', { profile: currentProfile || null, region })
 }
 
 export async function listBuckets(): Promise<string[]> {
@@ -34,9 +38,7 @@ export async function listBuckets(): Promise<string[]> {
       .map(b => b.Name!)
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b))
-    if (process.env.VERBOSE_LOG === '1') {
-      console.log('[s3:listBuckets]', { durationMs: Date.now() - start, count: names.length })
-    }
+  getLogger().debug('aws', 'listBuckets', { durationMs: Date.now() - start, count: names.length })
     return names
   } catch (err) {
     throw toFriendlyError('List Buckets', err)
@@ -68,16 +70,7 @@ export async function listObjects(params: ListObjectsParams): Promise<ListObject
       }))
       .sort((a, b) => a.key.localeCompare(b.key))
     const nextToken = out.IsTruncated ? out.NextContinuationToken : undefined
-    if (process.env.VERBOSE_LOG === '1') {
-      console.log('[s3:listObjects]', {
-        bucket: params.bucket,
-        prefix: params.prefix ?? '',
-        durationMs: Date.now() - start,
-        folders: folders.length,
-        objects: objects.length,
-        truncated: Boolean(nextToken)
-      })
-    }
+  getLogger().debug('aws', 'listObjects', { bucket: params.bucket, prefix: params.prefix ?? '', durationMs: Date.now() - start, folders: folders.length, objects: objects.length, truncated: Boolean(nextToken) })
     return { folders, objects, nextToken }
   } catch (err) {
     throw toFriendlyError(`List Objects in s3://${params.bucket}/${params.prefix ?? ''}`, err)
@@ -128,9 +121,7 @@ async function resolveRegion(profile?: string): Promise<string | undefined> {
     [...namesToTry].map(n => creds[n]?.['region'] || creds[n]?.['aws_region'] || creds[n]?.['aws_default_region'])
   )
   const resolved = fromCfg || fromCreds || envRegion
-  if (process.env.VERBOSE_LOG === '1') {
-    console.log('[s3:resolveRegion]', { profile: profile || null, resolved, fromCfg: !!fromCfg, fromCreds: !!fromCreds, env: !!envRegion })
-  }
+  getLogger().debug('fs', 'resolveRegion', { profile: profile || null, resolved: resolved || null, fromCfg: !!fromCfg, fromCreds: !!fromCreds, env: !!envRegion, credsPath, configPath })
   return resolved
 }
 
@@ -167,9 +158,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
       out.push(item)
     }
   }
-  if (process.env.VERBOSE_LOG === '1') {
-    console.log('[s3:listProfiles]', { credsPath, configPath, count: out.length })
-  }
+  getLogger().debug('fs', 'listProfiles', { credsPath, configPath, count: out.length })
   return out
 }
 

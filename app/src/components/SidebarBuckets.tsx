@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useBuckets } from '../lib/query'
 import { useStore } from '../lib/store'
+import { trace, warn } from '../lib/log'
 
 export default function SidebarBuckets() {
   const { bucket, profile, connected, selectBucket, connectionError, setConnectionError, setConnected, isSwitchingProfile } = useStore() as any
@@ -13,6 +14,7 @@ export default function SidebarBuckets() {
     if (isError) {
       const msg = (error as Error)?.message || 'Failed to load buckets.'
       setConnectionError(msg)
+  warn('ui', 'buckets load failed', { error: msg })
       // clear selected bucket/prefix when failure happens
       selectBucket(undefined)
     } else if (data && data.length > 0) {
@@ -43,7 +45,8 @@ export default function SidebarBuckets() {
             // try re-initializing the profile
             try {
               setConnectionError(undefined)
-              await window.api.s3.init({ profile })
+              const res = await (window as any).api.s3.init({ profile })
+              if (!res?.ok) throw new Error(res?.error || 'Failed to connect')
               setConnected(true)
               void refetch()
             } catch (e) {
@@ -57,7 +60,7 @@ export default function SidebarBuckets() {
           <ul className="text-sm">
             {data.map(name => (
               <li key={name}>
-                <button onClick={() => selectBucket(name)} className={`w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-neutral-800 ${bucket === name ? 'bg-blue-100 dark:bg-neutral-800 font-medium' : ''}`}>
+                <button onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }} className={`w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-neutral-800 ${bucket === name ? 'bg-blue-100 dark:bg-neutral-800 font-medium' : ''}`}>
                   {name}
                 </button>
               </li>

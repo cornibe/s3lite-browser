@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { useStore } from '../lib/store'
 import { queryClient } from '../lib/query'
+import { trace, info, warn } from '../lib/log'
 
 export default function Topbar() {
   const { profile, connected, setProfile, setConnected, selectBucket, setConnectionError, setIsSwitchingProfile } = useStore()
@@ -11,7 +12,7 @@ export default function Topbar() {
   const [profiles, setProfiles] = useState<{ name: string; isSso?: boolean }[]>([])
 
   useEffect(() => {
-    if (window.api.env.isDev()) document.body.classList.add('dark')
+    if ((window as any).api.env.isDev()) document.body.classList.add('dark')
   }, [])
 
   useEffect(() => {
@@ -22,8 +23,9 @@ export default function Topbar() {
     setRefreshing(true)
     setError('')
     try {
-      const list = await window.api.s3.listProfiles()
+  const list = await (window as any).api.s3.listProfiles()
       setProfiles(list)
+      info('ui', 'profiles loaded', { count: list.length })
       if (!profile) {
         const hasDefault = list.find(p => p.name === 'default')
         if (hasDefault) setProfile('default')
@@ -45,8 +47,10 @@ export default function Topbar() {
     setIsSwitchingProfile(true)
     try {
       const chosen = p ?? profile
-      await window.api.s3.init({ profile: chosen })
-      setConnected(true)
+      trace('ui', 'connect profile', { profile: chosen || null })
+  const res = await (window as any).api.s3.init({ profile: chosen })
+  if (!res?.ok) throw new Error(res?.error || 'Failed to connect')
+  setConnected(true)
       setStatus(`Connected${chosen ? ` .€ ${chosen}` : ''}`)
     } catch (e) {
       setConnected(false)
@@ -56,6 +60,7 @@ export default function Topbar() {
       setError(msg)
       setConnectionError(msg)
       setStatus('')
+      warn('ui', 'connect failed', { error: (e as Error)?.message || String(e) })
     } finally {
       setConnecting(false)
   setIsSwitchingProfile(false)
@@ -74,7 +79,7 @@ export default function Topbar() {
             <option key={p.name} value={p.name}>{p.name}{p.isSso ? ' (SSO)' : ''}</option>
           ))}
         </select>
-        <button aria-label="Refresh profiles" title="Refresh profiles" className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 disabled:opacity-50" disabled={refreshing} onClick={refreshProfiles}>
+  <button aria-label="Refresh profiles" title="Refresh profiles" className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 disabled:opacity-50" disabled={refreshing} onClick={() => { trace('ui', 'refresh profiles'); void refreshProfiles() }}>
           {refreshing ? (
             <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9" strokeWidth="3"/></svg>
           ) : (

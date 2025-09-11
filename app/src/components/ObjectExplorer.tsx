@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react'
 import { useObjects } from '../lib/query'
 import { useStore } from '../lib/store'
 import type { S3ObjectItem, S3Folder } from '../../electron/types'
+import { trace } from '../lib/log'
 
 type Entry = (
   | { type: 'folder'; data: S3Folder }
@@ -27,7 +28,7 @@ function formatSize(n: number) {
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, setSelectedKey, isSwitchingProfile } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, setSelectedKey, isSwitchingProfile, connectionError } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -56,7 +57,7 @@ export default function ObjectExplorer() {
   }, [data])
 
   function onDoubleClick(item: Entry) {
-    if (item.type === 'folder') setPrefix(item.data.prefix)
+    if (item.type === 'folder') { trace('ui', 'open folder', { prefix: item.data.prefix }); setPrefix(item.data.prefix) }
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -74,7 +75,7 @@ export default function ObjectExplorer() {
       e.preventDefault()
     } else if (e.key === 'Enter') {
       const it = items[Math.max(idx, 0)]
-      if (it && it.type === 'folder') setPrefix(it.data.prefix)
+      if (it && it.type === 'folder') { trace('ui', 'kb open folder', { prefix: it.data.prefix }); setPrefix(it.data.prefix) }
     }
   }
 
@@ -95,15 +96,20 @@ export default function ObjectExplorer() {
         <div className="opacity-70">{bucket ? `${bucket}` : 'No bucket selected'}</div>
         <div className="ml-2">/</div>
         <div className="flex items-center gap-1 flex-wrap">
-          {crumbs.map((c, i) => (
+      {crumbs.map((c, i) => (
             <div key={i} className="flex items-center gap-1">
-              <button className="hover:underline" onClick={() => setPrefix(c.value)}>{c.label}</button>
+        <button className="hover:underline" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
               {i < crumbs.length - 1 && <span className="opacity-50">/</span>}
             </div>
           ))}
         </div>
-        {prefix && <button className="ml-auto text-xs underline" onClick={() => setPrefix(parentPrefix)}>Up</button>}
+    {prefix && <button className="ml-auto text-xs underline" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
       </div>
+
+      {/* Connection error banner for visibility in main panel */}
+      {connectionError && (
+        <div className="border-b px-3 py-2 text-sm text-red-600">{connectionError}</div>
+      )}
 
       <div className="flex-1 overflow-auto">
         {isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
@@ -114,8 +120,7 @@ export default function ObjectExplorer() {
             <button onClick={() => refetch()} className="underline">Retry</button>
           </div>
         )}
-        {/* show connection errors if present */}
-        {/** connectionError is surfaced in the sidebar; no need to duplicate here */}
+  {/* query-specific errors are shown below; connectionError is also surfaced above */}
         {/* Only render the objects table when there's no error and a bucket is selected */}
   {!isSwitchingProfile && !isError && bucket && (
           <table className="min-w-full text-sm">
@@ -132,7 +137,7 @@ export default function ObjectExplorer() {
                 const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
-                  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'bg-blue-50 dark:bg-neutral-800' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800'} cursor-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => setSelectedKey(it.type === 'object' ? it.data.key : it.data.prefix)}>
+      <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'bg-blue-50 dark:bg-neutral-800' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800'} cursor-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelectedKey(it.type === 'object' ? it.data.key : it.data.prefix) }}>
                     <td className="px-3 py-2 font-medium">{name}</td>
                     <td className="px-3 py-2 tabular-nums">{it.type === 'object' ? formatSize(it.data.size) : '-'}</td>
                     <td className="px-3 py-2">{it.type === 'object' && it.data.lastModified ? new Date(it.data.lastModified).toLocaleString() : '-'}</td>
@@ -145,7 +150,7 @@ export default function ObjectExplorer() {
         )}
         {hasNextPage && (
           <div className="px-3 py-3">
-            <button disabled={isFetchingNextPage} onClick={() => fetchNextPage()} className="px-3 py-1 rounded bg-neutral-200 dark:bg-neutral-700">
+    <button disabled={isFetchingNextPage} onClick={() => { trace('ui', 'load more'); fetchNextPage() }} className="px-3 py-1 rounded bg-neutral-200 dark:bg-neutral-700">
               {isFetchingNextPage ? 'Loading…' : 'Load more'}
             </button>
           </div>
