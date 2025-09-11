@@ -1,0 +1,99 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+.pnpm-store/
+
+# Vite / Dev tools
+.env
+.env.*.local
+dist/
+.build/
+.cache/
+.vite/
+
+# Electron
+out/
+release/
+*.asar
+electron-builder.yml
+forge.config.*
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+lerna-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.vscode-test/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Coverage
+coverage/
+coverage-final.json
+
+# Testing
+jest.config.ts
+jest.config.js
+.vitest/
+
+# Local runtime
+.env.local
+.env.*.local
+.localenv
+
+# Secrets and keys
+secrets.json
+*.pem
+*.key
+
+# Build outputs
+build/
+dist/
+.release/
+
+# Misc
+*.tgz
+**/tsconfig.tsbuildinfo
+
+# Yarn PnP
+.pnp.*
+
+# Parcel
+.cache
+
+# Mac universal
+.AppleDouble
+.LSOverride
+
+# Lockfiles (if using a different package manager)
+# remove the ones you need from above instead of ignoring all
+
+# Custom for this repo
+# Electron preload and build artifacts
+app/dist/
+app/node_modules/
+
+# Local dev files
+*.local
+
+# Windows WSL
+.msw
