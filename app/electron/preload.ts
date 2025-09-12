@@ -8,6 +8,7 @@ const Channels = {
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
+  UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
   LOG_WRITE: 'log:write',
   LOG_GET_LEVEL: 'log:getLevel',
@@ -35,6 +36,7 @@ const api: RendererAPI = {
   },
   ui: {
     pickCredentialsFile: () => ipcRenderer.invoke(Channels.UI_PICK_CREDENTIALS),
+  pickDirectory: (options?: { title?: string; defaultPath?: string }) => ipcRenderer.invoke(Channels.UI_PICK_DIRECTORY, options),
     processDroppedFiles: (files: File[]) => {
       const fileData = files.map(file => ({
         name: file.name,

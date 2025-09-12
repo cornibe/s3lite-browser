@@ -65,6 +65,13 @@ export function registerIpc() {
     return res.canceled ? undefined : res.filePaths[0]
   })
 
+  ipcMain.handle(IpcChannels.UI_PICK_DIRECTORY, async (e, options?: { title?: string; defaultPath?: string }) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const res = await dialog.showOpenDialog(win, { title: options?.title || 'Select download folder', defaultPath: options?.defaultPath, properties: ['openDirectory', 'createDirectory'] })
+    getLogger().trace('ui', 'pickDirectory', { canceled: res.canceled, count: res.filePaths?.length || 0 })
+    return res.canceled ? undefined : res.filePaths[0]
+  })
+
   ipcMain.handle(IpcChannels.UI_PROCESS_DROPPED_FILES, async (_e, fileData: Array<{ name: string; path: string, size: number; type: string }>) => {
     getLogger().trace('ui', 'processDroppedFiles start', { count: fileData.length })
 

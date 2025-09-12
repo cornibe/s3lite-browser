@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react'
+import React, { useMemo, useRef, useEffect, useState } from 'react'
 import { useObjects } from '../lib/query'
 import { useStore } from '../lib/store'
 import type { S3ObjectItem, S3Folder } from '../../electron/types'
@@ -28,9 +28,11 @@ function formatSize(n: number) {
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, setSelectedKey, isSwitchingProfile, connectionError } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, isSwitchingProfile, connectionError } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
+  const [showProps, setShowProps] = useState<{ type: 'object' | 'folder'; data: any } | null>(null)
 
   // Reset prefix and selection when profile or bucket changes or when disconnected
   // This prevents stale buckets/objects from previous profile remaining visible
@@ -170,6 +172,35 @@ export default function ObjectExplorer() {
     }
   }
 
+  function onContextMenu(e: React.MouseEvent, item: Entry) {
+    e.preventDefault()
+    setSelected(item.type === 'object' ? item.data.key : item.data.prefix, item.type)
+    setContextMenu({ x: e.clientX, y: e.clientY, item })
+  }
+
+  async function handleDownload(item?: Entry) {
+    const it = item || (items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey))
+    if (!it) return
+    try {
+      const dest = await (window as any).api.ui.pickDirectory({ title: 'Select download folder' })
+      if (!dest) return
+      if (it.type === 'folder') {
+        await (window as any).api.transfers.startPrefixDownload({ bucket, prefix: it.data.prefix, destDir: dest })
+      } else {
+        await (window as any).api.transfers.startObjectDownload({ bucket, key: it.data.key, destDir: dest })
+      }
+    } finally {
+      setContextMenu(null)
+    }
+  }
+
+  function handleProperties(item?: Entry) {
+    const it = item || (items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey))
+    if (!it) return
+    setShowProps({ type: it.type, data: it.data })
+    setContextMenu(null)
+  }
+
   const crumbs = splitPrefix(prefix)
   const parentPrefix = prefix.split('/').slice(0, -2).join('/') + (prefix ? '/' : '')
 
@@ -224,11 +255,11 @@ export default function ObjectExplorer() {
               </tr>
             </thead>
             <tbody>
-              {items.map((it, i) => {
+        {items.map((it, i) => {
                 const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
-      <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'bg-blue-50 dark:bg-neutral-800' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800'} cursor-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelectedKey(it.type === 'object' ? it.data.key : it.data.prefix) }}>
+      <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'bg-blue-50 dark:bg-neutral-800' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800'} cursor-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type) }} onContextMenu={(e) => onContextMenu(e, it)}>
                     <td className="px-3 py-2 font-medium">{name}</td>
                     <td className="px-3 py-2 tabular-nums">{it.type === 'object' ? formatSize(it.data.size) : '-'}</td>
                     <td className="px-3 py-2">{it.type === 'object' && it.data.lastModified ? new Date(it.data.lastModified).toLocaleString() : '-'}</td>
@@ -249,6 +280,41 @@ export default function ObjectExplorer() {
       </div>
 
       <Details items={items} selectedKey={selectedKey} />
+
+      {contextMenu && (
+        <div className="fixed z-50 bg-white dark:bg-neutral-800 border rounded shadow text-sm"
+             style={{ left: contextMenu.x, top: contextMenu.y }}
+             onClick={() => setContextMenu(null)}
+        >
+          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" onClick={() => handleDownload(contextMenu.item)}>Download</button>
+          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+        </div>
+      )}
+
+      {showProps && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setShowProps(null)} />
+          <div className="relative z-10 w-[560px] max-w-[95vw] rounded bg-white dark:bg-neutral-900 p-4 border shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold">Properties</div>
+              <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={() => setShowProps(null)}>Close</button>
+            </div>
+            {showProps.type === 'folder' ? (
+              <div className="space-y-2 text-sm">
+                <div><span className="opacity-70">Prefix:</span> <span className="font-mono break-all">{showProps.data.prefix}</span></div>
+              </div>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <div><span className="opacity-70">Key:</span> <span className="font-mono break-all">{showProps.data.key}</span></div>
+                <div><span className="opacity-70">Size:</span> {formatSize(showProps.data.size)}</div>
+                <div><span className="opacity-70">Last modified:</span> {showProps.data.lastModified ? new Date(showProps.data.lastModified).toLocaleString() : '-'}</div>
+                <div><span className="opacity-70">ETag:</span> <span className="font-mono">{showProps.data.etag ?? ''}</span></div>
+                <div><span className="opacity-70">Storage class:</span> {showProps.data.storageClass ?? ''}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

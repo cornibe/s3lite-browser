@@ -113,6 +113,7 @@ export interface RendererAPI {
   }
   ui: {
     pickCredentialsFile(): Promise<string | undefined>
+  pickDirectory(options?: { title?: string; defaultPath?: string }): Promise<string | undefined>
     processDroppedFiles(fileData: Array<{ name: string; size: number; type: string }>): Promise<Array<{ path: string; size: number; name: string }>>
   }
   log: {
@@ -139,6 +140,7 @@ export const IpcChannels = {
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
+  UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
   LOG_WRITE: 'log:write',
   LOG_GET_LEVEL: 'log:getLevel',

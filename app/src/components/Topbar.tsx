@@ -4,7 +4,7 @@ import { queryClient } from '../lib/query'
 import { trace, info, warn } from '../lib/log'
 
 export default function Topbar() {
-  const { profile, connected, setProfile, setConnected, selectBucket, setConnectionError, setIsSwitchingProfile } = useStore()
+  const { profile, connected, selectedKey, bucket, setProfile, setConnected, selectBucket, setConnectionError, setIsSwitchingProfile, startDownloadSelected } = useStore() as any
   const [connecting, setConnecting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [status, setStatus] = useState('')
@@ -70,7 +70,26 @@ export default function Topbar() {
   return (
     <div className="border-b bg-neutral-50 dark:bg-neutral-900 px-4 py-2 flex items-center gap-3">
       <div className="font-semibold">S3 Browser</div>
-      <div className="w-64 shrink-0"></div>
+      <div className="w-64 shrink-0 flex items-center gap-2">
+  {connected && bucket && (
+          <button
+            className="px-2 py-1 text-sm rounded bg-neutral-200 dark:bg-neutral-800 disabled:opacity-50"
+            title="Download selected item"
+            disabled={!selectedKey}
+            onClick={async () => {
+              try {
+                const dest = await (window as any).api.ui.pickDirectory({ title: 'Select download folder' })
+                if (!dest) return
+    await startDownloadSelected(dest)
+              } catch (e) {
+                console.error('download failed', e)
+              }
+            }}
+          >
+            Download
+          </button>
+        )}
+      </div>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <label className="text-sm opacity-80">Profile</label>
   <select className="px-2 py-1 rounded border bg-white/70 dark:bg-neutral-800 text-sm" value={profile ?? ''} onChange={e => { const next = e.target.value || undefined; setIsSwitchingProfile(true); setConnected(false); setProfile(next); selectBucket(undefined); queryClient.clear(); setError(''); setConnectionError(undefined); if (next) { void connect(next) } else { setStatus('Not connected'); setIsSwitchingProfile(false) } }}>
