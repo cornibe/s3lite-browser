@@ -1,5 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import * as s3 from './s3'
+import * as transfers from './transfers'
 import { IpcChannels } from './types'
 import { getLogger, safeMeta, redact } from './log'
 
@@ -64,6 +65,22 @@ export function registerIpc() {
     return res.canceled ? undefined : res.filePaths[0]
   })
 
+  ipcMain.handle(IpcChannels.UI_PROCESS_DROPPED_FILES, async (_e, fileData: Array<{ name: string; path: string, size: number; type: string }>) => {
+    getLogger().trace('ui', 'processDroppedFiles start', { count: fileData.length })
+
+    // Return file info with paths that can be used for upload
+    const result = fileData.map(f => {
+      return {
+        path: f.path,
+        size: f.size || 0,
+        name: f.name
+      }
+    })
+    
+    getLogger().trace('ui', 'processDroppedFiles success', { selected: result.length })
+    return result
+  })
+
   // Logging bridge from renderer
   ipcMain.handle(IpcChannels.LOG_WRITE, async (_e, payload: { level: string; scope: string; msg: string; meta?: Record<string, unknown> }) => {
     const lvl = (payload.level || 'INFO').toUpperCase()
@@ -83,6 +100,61 @@ export function registerIpc() {
   ipcMain.handle(IpcChannels.LOG_SET_LEVEL, async (_e, level: string) => { const l = (level || '').toUpperCase() as any; if (LEVELS.includes(l)) getLogger().setLevel(l); return { level: getLogger().getLevel() } })
   ipcMain.handle(IpcChannels.LOG_SET_CONSOLE_LEVEL, async (_e, level: string) => { const l = (level || '').toUpperCase() as any; if (LEVELS.includes(l)) getLogger().setConsoleLevel(l); return { level: getLogger().getConsoleLevel() } })
   ipcMain.handle(IpcChannels.LOG_OPEN_DIR, async () => { await getLogger().openLogsFolder(); return { ok: true as const } })
+
+  // Transfer handlers
+  ipcMain.handle(IpcChannels.XFER_START_OBJECT, async (e, params) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const t = Date.now()
+    try {
+      const jobId = await transfers.startObject(win, params)
+      getLogger().info('xfer', 'start object', { durationMs: Date.now() - t, jobId, bucket: params.bucket, key: params.key })
+      return { ok: true as const, jobId }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to start object download'
+      getLogger().warn('xfer', 'start object failed', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.XFER_START_PREFIX, async (e, params) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const t = Date.now()
+    try {
+      const jobId = await transfers.startPrefix(win, params)
+      getLogger().info('xfer', 'start prefix', { durationMs: Date.now() - t, jobId, bucket: params.bucket, prefix: params.prefix })
+      return { ok: true as const, jobId }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to start prefix download'
+      getLogger().warn('xfer', 'start prefix failed', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.XFER_START_UPLOAD, async (e, params) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const t = Date.now()
+    try {
+      const jobId = await transfers.startUpload(win, params)
+      getLogger().info('xfer', 'start upload', { durationMs: Date.now() - t, jobId, bucket: params.bucket, files: params.files?.length || 0 })
+      return { ok: true as const, jobId }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to start upload'
+      getLogger().warn('xfer', 'start upload failed', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.XFER_CONTROL, async (e, params) => {
+    try {
+      const result = transfers.control(params.jobId, params.action)
+      getLogger().debug('xfer', 'control', { jobId: params.jobId, action: params.action })
+      return { ok: true as const, result }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to control transfer'
+      getLogger().warn('xfer', 'control failed', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
 }
 
 const LEVELS = ['TRACE','DEBUG','INFO','WARN','ERROR','FATAL']

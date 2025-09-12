@@ -79,6 +79,64 @@ export default function ObjectExplorer() {
     }
   }
 
+  function onDragOver(e: React.DragEvent) {
+    if (!bucket) { trace('ui', 'drag ignored no bucket'); return }
+    e.preventDefault()
+    try { e.dataTransfer.dropEffect = 'copy' } catch {}
+    trace('ui', 'drag over', { bucket, prefix, selectedKey })
+  }
+
+  async function onDrop(e: React.DragEvent) {
+    if (!bucket) { trace('ui', 'drop ignored no bucket'); return }
+    e.preventDefault()
+    trace('ui', 'drop start', { bucket, prefix, selectedKey })
+
+    // Get the files from the drop event
+    const fileList = Array.from(e.dataTransfer?.files || []) as File[]
+    if (fileList.length === 0) {
+      trace('ui', 'drop no files')
+      return
+    }
+
+    // Extract file metadata
+    const fileData = fileList.map(f => ({
+      name: f.name,
+      path: (f as any).path,
+      size: f.size,
+      type: f.type
+    }))
+
+    trace('ui', 'drop files detected', { 
+      count: fileData.length, 
+      files: fileData.slice(0, 3).map(f => ({ name: f.name, size: f.size }))
+    })
+
+    try {
+      // Process the dropped files through the main process
+      const processedFiles = await (window as any).api.ui.processDroppedFiles(fileData)
+      
+      if (processedFiles.length === 0) {
+        trace('ui', 'drop user canceled file selection')
+        return
+      }
+
+      trace('ui', 'drop processed files', { count: processedFiles.length })
+
+      // Proceed with upload
+      const targetPrefix = selectedKey && items.find(it => it.type === 'folder' && it.data.prefix === selectedKey) ? selectedKey : prefix
+      trace('ui', 'upload start', { bucket, prefix: targetPrefix, files: processedFiles.map(f => f.name).slice(0, 5), more: Math.max(0, processedFiles.length - 5) })
+      
+      const res = await (window as any).api.transfers.startUpload({ bucket, prefix: targetPrefix, files: processedFiles })
+      if (!res?.ok) {
+        trace('ui', 'upload failed to start', { error: res?.error || 'unknown' })
+      } else {
+        trace('ui', 'upload job created', { jobId: res.jobId })
+      }
+    } catch (error) {
+      trace('ui', 'drop error', { error: (error as Error)?.message || 'unknown' })
+    }
+  }
+
   const crumbs = splitPrefix(prefix)
   const parentPrefix = prefix.split('/').slice(0, -2).join('/') + (prefix ? '/' : '')
 
@@ -91,7 +149,7 @@ export default function ObjectExplorer() {
   }
 
   return (
-    <div className="flex-1 flex flex-col" onKeyDown={onKeyDown} tabIndex={0} ref={listRef}>
+    <div className="flex-1 flex flex-col" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
       <div className="border-b px-3 py-2 flex items-center gap-2 text-sm">
         <div className="opacity-70">{bucket ? `${bucket}` : 'No bucket selected'}</div>
         <div className="ml-2">/</div>

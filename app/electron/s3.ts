@@ -1,9 +1,10 @@
 import { S3Client, ListBucketsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
-import type { ListObjectsParams, ListObjectsResult, S3InitParams, ProfileInfo } from './types'
+import os from 'os'
 import { getLogger } from './log'
+import * as transfers from './transfers'
+import type { S3InitParams, ListObjectsParams, ListObjectsResult, ProfileInfo } from './types'
 
 let client: S3Client | null = null
 let currentProfile: string | undefined
@@ -13,6 +14,10 @@ let overrideConfigPath: string | undefined
 function ensureClient() {
   if (!client) throw new Error('S3 client not initialized. Connect to a profile first.')
   return client
+}
+
+export function getClient(): S3Client {
+  return ensureClient()
 }
 
 export async function init(params: S3InitParams) {
@@ -26,6 +31,7 @@ export async function init(params: S3InitParams) {
     throw new Error(`Could not resolve region${currentProfile ? ` for profile "${currentProfile}"` : ''}. Set region in ~/.aws/config or credentials, or export AWS_REGION.`)
   }
   client = new S3Client({ region })
+  transfers.bindS3Client(client)
   getLogger().info('aws', 's3 client initialized', { profile: currentProfile || null, region })
 }
 
