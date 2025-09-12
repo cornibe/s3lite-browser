@@ -450,10 +450,10 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
     active++
     getLogger().trace('xfer', 'upload next', { jobId, path: f.path, size: f.size })
     const key = prefix + (f.name || path.basename(f.path))
-  const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key, size: f.size, destPath: f.path, status: 'queued', bytesTransferred: 0 }
+    const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key, size: f.size, destPath: f.path, status: 'queued', bytesTransferred: 0 }
     items.set(it.id, it)
     emit(win, { type: 'item-state', jobId, item: it })
-  uploadOne(win, job, it, f.path, f.size, settings).then(() => {
+    uploadOne(win, job, it, f.path, f.size, settings).then(() => {
       active--
       job.completedCount++
       if (job.completedCount >= job.itemCount && job.status !== 'failed' && job.status !== 'canceled') {

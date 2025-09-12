@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { RendererAPI } from './types'
 
 const Channels = {
@@ -35,7 +35,15 @@ const api: RendererAPI = {
   },
   ui: {
     pickCredentialsFile: () => ipcRenderer.invoke(Channels.UI_PICK_CREDENTIALS),
-    processDroppedFiles: (fileData) => ipcRenderer.invoke(Channels.UI_PROCESS_DROPPED_FILES, fileData)
+    processDroppedFiles: (files: File[]) => {
+      const fileData = files.map(file => ({
+        name: file.name,
+        path: (file as any).path || webUtils.getPathForFile(file),
+        size: file.size,
+        type: file.type
+      }))
+      return ipcRenderer.invoke(Channels.UI_PROCESS_DROPPED_FILES, fileData)
+    }
   },
   log: {
     write: (payload) => ipcRenderer.invoke(Channels.LOG_WRITE, payload),

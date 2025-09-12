@@ -98,29 +98,62 @@ export default function ObjectExplorer() {
       return
     }
 
-    // Extract file metadata
-    const fileData = fileList.map(f => ({
-      name: f.name,
-      path: (f as any).path,
-      size: f.size,
-      type: f.type
-    }))
+    // Extract file metadata - add debugging to see what's available
+    const fileData = fileList.map((f, i) => {
+      const fileObj = f as any
+      trace('ui', `file ${i} debug`, { 
+        name: f.name, 
+        size: f.size, 
+        type: f.type,
+        path: fileObj.path,
+        webkitRelativePath: fileObj.webkitRelativePath,
+        keys: Object.getOwnPropertyNames(fileObj)
+      })
+      
+      return {
+        name: f.name,
+        path: fileObj.path || '',
+        size: f.size,
+        type: f.type
+      }
+    })
+
+    // Debug dataTransfer contents
+    try {
+      const types = Array.from(e.dataTransfer?.types || [])
+      trace('ui', 'dataTransfer types', { types })
+      
+      for (const type of types) {
+        try {
+          const data = e.dataTransfer?.getData(type) || ''
+          trace('ui', `dataTransfer[${type}]`, { data: data.substring(0, 200) })
+        } catch (err) {
+          trace('ui', `dataTransfer[${type}] error`, { error: String(err) })
+        }
+      }
+    } catch (err) {
+      trace('ui', 'dataTransfer access error', { error: String(err) })
+    }
 
     trace('ui', 'drop files detected', { 
       count: fileData.length, 
-      files: fileData.slice(0, 3).map(f => ({ name: f.name, size: f.size }))
+      files: fileData.map(f => ({ name: f.name, size: f.size, hasPath: Boolean(f.path), path: f.path }))
     })
 
     try {
       // Process the dropped files through the main process
-      const processedFiles = await (window as any).api.ui.processDroppedFiles(fileData)
+      const processedFiles = await (window as any).api.ui.processDroppedFiles(fileList)
       
       if (processedFiles.length === 0) {
         trace('ui', 'drop user canceled file selection')
         return
       }
 
-      trace('ui', 'drop processed files', { count: processedFiles.length })
+      trace('ui', 'drop processed files', { 
+        count: processedFiles.length, 
+        withPath: processedFiles.filter((f: any) => f.path).length,
+        files: processedFiles.map((f: any) => ({ name: f.name, path: f.path, size: f.size }))
+      })
 
       // Proceed with upload
       const targetPrefix = selectedKey && items.find(it => it.type === 'folder' && it.data.prefix === selectedKey) ? selectedKey : prefix

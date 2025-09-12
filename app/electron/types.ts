@@ -91,6 +91,7 @@ export type TransferJob = {
   itemCount: number
   completedCount: number
   settings: DownloadSettings
+  error?: string
 }
 
 export type TransferEvent =

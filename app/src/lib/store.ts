@@ -22,6 +22,7 @@ type Actions = {
   selectBucket: (bucket: string | undefined) => void
   setPrefix: (prefix: string) => void
   setSelectedKey: (key?: string) => void
+  setTransfers: (transfers: State['transfers']) => void
   startDownloadObject: (destDir: string) => Promise<void>
   startDownloadPrefix: (destDir: string) => Promise<void>
 }
@@ -41,6 +42,7 @@ export const useStore = create<State & Actions>(set => ({
   selectBucket: (bucket) => set({ bucket, prefix: '', selectedKey: undefined }),
   setPrefix: (prefix) => set({ prefix, selectedKey: undefined }),
   setSelectedKey: (selectedKey) => set({ selectedKey }),
+  setTransfers: (transfers) => set({ transfers }),
   startDownloadObject: async (destDir) => {
     const state = (useStore.getState())
     if (!state.bucket || !state.selectedKey) return
