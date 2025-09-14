@@ -29,6 +29,89 @@ function formatSize(n: number) {
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`
 }
 
+// Icon components for files and folders
+function FolderIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z"/>
+    </svg>
+  )
+}
+
+function FileIcon({ fileName, className = "w-4 h-4" }: { fileName: string; className?: string }) {
+  const extension = fileName.split('.').pop()?.toLowerCase() || ''
+  
+  // Image files
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico'].includes(extension)) {
+    return (
+      <svg className={`${className} text-green-600 dark:text-green-400`} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8.5,13.5L11,16.5L14.5,12L19,18H5M21,19V5C21,3.89 20.1,3 19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19Z"/>
+      </svg>
+    )
+  }
+  
+  // Video files
+  if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv', 'm4v'].includes(extension)) {
+    return (
+      <svg className={`${className} text-red-600 dark:text-red-400`} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M17,10.5V7A1,1 0 0,0 16,6H4A1,1 0 0,0 3,7V17A1,1 0 0,0 4,18H16A1,1 0 0,0 17,17V13.5L21,17.5V6.5L17,10.5Z"/>
+      </svg>
+    )
+  }
+  
+  // Audio files
+  if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'wma', 'm4a'].includes(extension)) {
+    return (
+      <svg className={`${className} text-purple-600 dark:text-purple-400`} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/>
+      </svg>
+    )
+  }
+  
+  // Archive files
+  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(extension)) {
+    return (
+      <svg className={`${className} text-orange-600 dark:text-orange-400`} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M14,17H12V15H14M14,13H12V11H14M12,9H14V7H12M14,5H12V3H14M10,7H12V5H10V7M7,3V5H5A2,2 0 0,0 3,7V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7A2,2 0 0,0 19,5H17V3H14V5H12V3H10V5H7V3H10V5H7Z"/>
+      </svg>
+    )
+  }
+  
+  // Document files
+  if (['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt'].includes(extension)) {
+    return (
+      <svg className={`${className} text-blue-600 dark:text-blue-400`} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M13,9H18.5L13,3.5V9M6,2H14L20,8V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V4C4,2.89 4.89,2 6,2M15,18V16H6V18H15M18,14V12H6V14H18Z"/>
+      </svg>
+    )
+  }
+  
+  // Code files
+  if (['js', 'ts', 'jsx', 'tsx', 'html', 'css', 'scss', 'json', 'xml', 'yaml', 'yml', 'py', 'java', 'c', 'cpp', 'cs', 'php', 'rb', 'go', 'rs', 'swift'].includes(extension)) {
+    return (
+      <svg className={`${className} text-indigo-600 dark:text-indigo-400`} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M9.4,16.6L4.8,12L9.4,7.4L8,6L2,12L8,18L9.4,16.6M14.6,16.6L19.2,12L14.6,7.4L16,6L22,12L16,18L14.6,16.6Z"/>
+      </svg>
+    )
+  }
+  
+  // Spreadsheet files
+  if (['xls', 'xlsx', 'csv', 'ods'].includes(extension)) {
+    return (
+      <svg className={`${className} text-emerald-600 dark:text-emerald-400`} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6,2A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6M6,4H13V9H18V20H6V4M8,12V14H16V12H8M8,16V18H13V16H8Z"/>
+      </svg>
+    )
+  }
+  
+  // Default file icon
+  return (
+    <svg className={`${className} text-gray-600 dark:text-gray-400`} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z"/>
+    </svg>
+  )
+}
+
 export default function ObjectExplorer() {
   const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, isSwitchingProfile, connectionError } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
@@ -388,12 +471,21 @@ export default function ObjectExplorer() {
                 setSelected(undefined, undefined)
               }
             }}>
-        {items.map((it, i) => {
+              {items.map((it, i) => {
                 const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
       <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'bg-blue-50 dark:bg-neutral-800' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800'} cursor-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type) }} onContextMenu={(e) => onContextMenu(e, it)}>
-                    <td className="px-3 py-2 font-medium">{name}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <div className="flex items-center gap-2">
+                        {it.type === 'folder' ? (
+                          <FolderIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                        ) : (
+                          <FileIcon fileName={name} className="w-4 h-4 flex-shrink-0" />
+                        )}
+                        <span className="truncate">{name}</span>
+                      </div>
+                    </td>
                     <td className="px-3 py-2 tabular-nums">{it.type === 'object' ? formatSize(it.data.size) : '-'}</td>
                     <td className="px-3 py-2">{it.type === 'object' && it.data.lastModified ? new Date(it.data.lastModified).toLocaleString() : '-'}</td>
                     <td className="px-3 py-2">{it.type === 'object' ? (it.data.storageClass ?? '') : ''}</td>
