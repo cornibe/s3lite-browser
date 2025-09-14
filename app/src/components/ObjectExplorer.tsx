@@ -305,7 +305,7 @@ export default function ObjectExplorer() {
         <div className="flex items-center gap-1 flex-wrap">
       {crumbs.map((c, i) => (
             <div key={i} className="flex items-center gap-1">
-        <button className="hover:underline" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
+        <button className="hover:underline cursor-pointer" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
               {i < crumbs.length - 1 && <span className="opacity-50">/</span>}
             </div>
           ))}
@@ -315,21 +315,37 @@ export default function ObjectExplorer() {
             <>
               <button
                 onClick={() => refetch()}
-                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors cursor-pointer"
                 title="Refresh folder contents"
               >
                 ↻ Refresh
               </button>
               <button
                 onClick={() => setShowCreateFolder(true)}
-                className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors cursor-pointer"
                 title="Create new folder"
               >
                 + Folder
               </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const dest = await (window as any).api.ui.pickDirectory({ title: 'Select download folder' })
+                    if (!dest) return
+                    await handleDownload()
+                  } catch (e) {
+                    console.error('download failed', e)
+                  }
+                }}
+                className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors disabled:opacity-50 cursor-pointer"
+                title="Download selected item"
+                disabled={!selectedKey}
+              >
+                ↓ Download
+              </button>
             </>
           )}
-          {prefix && <button className="text-xs underline" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
+          {prefix && <button className="text-xs underline cursor-pointer" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
         </div>
       </div>
 
@@ -338,13 +354,19 @@ export default function ObjectExplorer() {
         <div className="border-b px-3 py-2 text-sm text-red-600">{connectionError}</div>
       )}
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" onClick={(e) => {
+        // Only deselect if clicking directly on the container, not on any child elements
+        if (e.target === e.currentTarget) {
+          trace('ui', 'deselect on background click')
+          setSelected(undefined, undefined)
+        }
+      }}>
         {isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
         {isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
         {isError && (
           <div className="px-3 py-2 text-sm text-red-600 flex items-center gap-3">
             <span>{(error as Error)?.message || 'Failed to load objects.'}</span>
-            <button onClick={() => refetch()} className="underline">Retry</button>
+            <button onClick={() => refetch()} className="underline cursor-pointer">Retry</button>
           </div>
         )}
   {/* query-specific errors are shown below; connectionError is also surfaced above */}
@@ -359,7 +381,13 @@ export default function ObjectExplorer() {
                 <th className="px-3 py-2 w-48">Storage Class</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody onClick={(e) => {
+              // Deselect when clicking on tbody but not on a row
+              if (e.target === e.currentTarget) {
+                trace('ui', 'deselect on table body click')
+                setSelected(undefined, undefined)
+              }
+            }}>
         {items.map((it, i) => {
                 const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
@@ -377,7 +405,7 @@ export default function ObjectExplorer() {
         )}
         {hasNextPage && (
           <div className="px-3 py-3">
-    <button disabled={isFetchingNextPage} onClick={() => { trace('ui', 'load more'); fetchNextPage() }} className="px-3 py-1 rounded bg-neutral-200 dark:bg-neutral-700">
+    <button disabled={isFetchingNextPage} onClick={() => { trace('ui', 'load more'); fetchNextPage() }} className="px-3 py-1 rounded bg-neutral-200 dark:bg-neutral-700 cursor-pointer">
               {isFetchingNextPage ? 'Loading…' : 'Load more'}
             </button>
           </div>
@@ -391,10 +419,10 @@ export default function ObjectExplorer() {
              style={{ left: contextMenu.x, top: contextMenu.y }}
              onClick={() => setContextMenu(null)}
         >
-          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" onClick={() => handleDownload(contextMenu.item)}>Download</button>
-          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
+          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
           <div className="border-t border-neutral-200 dark:border-neutral-600"></div>
-          <button className="block w-full text-left px-3 py-2 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400" onClick={() => handleDelete(contextMenu.item)}>
+          <button className="block w-full text-left px-3 py-2 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
             Delete
           </button>
         </div>
@@ -406,7 +434,7 @@ export default function ObjectExplorer() {
           <div className="relative z-10 w-[560px] max-w-[95vw] rounded bg-white dark:bg-neutral-900 p-4 border shadow">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold">Properties</div>
-              <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={() => setShowProps(null)}>Close</button>
+              <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded cursor-pointer" onClick={() => setShowProps(null)}>Close</button>
             </div>
             {showProps.type === 'folder' ? (
               <div className="space-y-2 text-sm">
