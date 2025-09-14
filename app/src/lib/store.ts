@@ -9,6 +9,16 @@ type State = {
   connected: boolean
   connectionError?: string
   isSwitchingProfile?: boolean
+  isSettingsOpen?: boolean
+  settings: {
+    overwritePolicy: 'skip' | 'overwrite' | 'rename' | 'prompt'
+    bandwidthLimitKBps?: number
+    requesterPays?: boolean
+    objectConcurrency?: number
+    partConcurrency?: number
+    partSizeMiB?: number
+    multipartThresholdMiB?: number
+  }
   transfers: {
     jobs: Record<string, import('../../electron/types').TransferJob>
     items: Record<string, import('../../electron/types').TransferItem>
@@ -25,9 +35,35 @@ type Actions = {
   setSelectedKey: (key?: string) => void
   setSelected: (key?: string, type?: 'object' | 'folder') => void
   setTransfers: (transfers: State['transfers']) => void
+  openSettings: () => void
+  closeSettings: () => void
+  setSettings: (settings: Partial<State['settings']>) => void
   startDownloadObject: (destDir: string) => Promise<void>
   startDownloadPrefix: (destDir: string) => Promise<void>
   startDownloadSelected: (destDir: string) => Promise<void>
+}
+
+function loadSettings(): State['settings'] {
+  try {
+    const raw = localStorage.getItem('s3lite.settings')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return {
+        overwritePolicy: parsed.overwritePolicy || 'prompt',
+        bandwidthLimitKBps: parsed.bandwidthLimitKBps,
+        requesterPays: Boolean(parsed.requesterPays),
+        objectConcurrency: parsed.objectConcurrency,
+        partConcurrency: parsed.partConcurrency,
+        partSizeMiB: parsed.partSizeMiB,
+        multipartThresholdMiB: parsed.multipartThresholdMiB,
+      }
+    }
+  } catch {}
+  return { overwritePolicy: 'prompt' }
+}
+
+function persistSettings(s: State['settings']) {
+  try { localStorage.setItem('s3lite.settings', JSON.stringify(s)) } catch {}
 }
 
 export const useStore = create<State & Actions>(set => ({
@@ -37,6 +73,8 @@ export const useStore = create<State & Actions>(set => ({
   selectedKey: undefined,
   selectedType: undefined,
   connected: false,
+  isSettingsOpen: false,
+  settings: loadSettings(),
   transfers: { jobs: {}, items: {} },
   setProfile: (profile) => set({ profile, bucket: undefined, prefix: '', selectedKey: undefined, selectedType: undefined, connected: false }),
   
@@ -48,33 +86,36 @@ export const useStore = create<State & Actions>(set => ({
   setSelectedKey: (selectedKey) => set({ selectedKey }),
   setSelected: (key, type) => set({ selectedKey: key, selectedType: type }),
   setTransfers: (transfers) => set({ transfers }),
+  openSettings: () => set({ isSettingsOpen: true }),
+  closeSettings: () => set({ isSettingsOpen: false }),
+  setSettings: (partial) => set(s => { const next = { ...s.settings, ...partial }; persistSettings(next); return { settings: next } }),
   startDownloadObject: async (destDir) => {
     const state = (useStore.getState())
     if (!state.bucket || !state.selectedKey) return
-    const res = await (window as any).api.transfers.startObjectDownload({ bucket: state.bucket, key: state.selectedKey, destDir })
+    const res = await (window as any).api.transfers.startObjectDownload({ bucket: state.bucket, key: state.selectedKey, destDir, settings: state.settings })
     if (!res?.ok) throw new Error(res?.error || 'Failed to start download')
   },
   startDownloadPrefix: async (destDir) => {
     const state = (useStore.getState())
     if (!state.bucket || !state.prefix) return
-    const res = await (window as any).api.transfers.startPrefixDownload({ bucket: state.bucket, prefix: state.prefix, destDir })
+    const res = await (window as any).api.transfers.startPrefixDownload({ bucket: state.bucket, prefix: state.prefix, destDir, settings: state.settings })
     if (!res?.ok) throw new Error(res?.error || 'Failed to start download')
   },
   startDownloadSelected: async (destDir) => {
     const state = (useStore.getState())
     if (!state.bucket) return
     if (state.selectedType === 'folder' && state.selectedKey) {
-      const res = await (window as any).api.transfers.startPrefixDownload({ bucket: state.bucket, prefix: state.selectedKey, destDir })
+      const res = await (window as any).api.transfers.startPrefixDownload({ bucket: state.bucket, prefix: state.selectedKey, destDir, settings: state.settings })
       if (!res?.ok) throw new Error(res?.error || 'Failed to start download')
       return
     }
     if (state.selectedType === 'object' && state.selectedKey) {
-      const res = await (window as any).api.transfers.startObjectDownload({ bucket: state.bucket, key: state.selectedKey, destDir })
+      const res = await (window as any).api.transfers.startObjectDownload({ bucket: state.bucket, key: state.selectedKey, destDir, settings: state.settings })
       if (!res?.ok) throw new Error(res?.error || 'Failed to start download')
       return
     }
     if (state.prefix) {
-      const res = await (window as any).api.transfers.startPrefixDownload({ bucket: state.bucket, prefix: state.prefix, destDir })
+      const res = await (window as any).api.transfers.startPrefixDownload({ bucket: state.bucket, prefix: state.prefix, destDir, settings: state.settings })
       if (!res?.ok) throw new Error(res?.error || 'Failed to start download')
     }
   }

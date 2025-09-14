@@ -36,7 +36,7 @@ export type DownloadSettings = {
   partConcurrency?: number
   partSizeMiB?: number
   multipartThresholdMiB?: number
-  overwritePolicy?: 'skip' | 'overwrite' | 'rename'
+  overwritePolicy?: 'skip' | 'overwrite' | 'rename' | 'prompt'
   bandwidthLimitKBps?: number
   requesterPays?: boolean
 }

@@ -1,53 +1,134 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../lib/store'
-import type { TransferItem as TransferItemType } from '../../electron/types'
+import type { TransferItem as TransferItemType, TransferJob as TransferJobType, TransferEvent } from '../../electron/types'
+import { clamp01, formatBytesIEC, ema, calcAlpha } from '../lib/format'
 
-function formatBytes(n: number) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let v = n
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`
+type RowState = {
+  // Smoothed speed EMA
+  speed?: number
+  lastSampleAt?: number
 }
 
-function TransferItem({ item }: { item: TransferItemType }) {
-  const { transfers, setTransfers } = useStore()
+function useThrottledListener(handler: (evt: TransferEvent) => void, fps = 15) {
+  const queued = useRef<TransferEvent[]>([])
+  const rafRef = useRef<number | null>(null)
+  const interval = Math.max(1, 1000 / fps)
+  const lastFlushRef = useRef(0)
 
-  function clearItem() {
-    const newItems = { ...transfers.items }
-    delete newItems[item.id]
-    const newJobs = { ...transfers.jobs }
-    if (Object.values(newItems).every(it => it.jobId !== item.jobId)) {
-      delete newJobs[item.jobId]
-    }
-    setTransfers({ jobs: newJobs, items: newItems })
-  }
+  useEffect(() => {
+    const off = (window as any).api.transfers.onEvent((evt: TransferEvent) => {
+      queued.current.push(evt)
+      const now = performance.now()
+      if (rafRef.current == null && now - lastFlushRef.current >= interval) {
+        rafRef.current = requestAnimationFrame(() => {
+          lastFlushRef.current = performance.now()
+          const events = queued.current
+          queued.current = []
+          rafRef.current = null
+          for (const e of events) handler(e)
+        })
+      }
+    })
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); off() }
+  }, [handler, interval])
+}
 
-  if (item.status === 'failed') {
-    const displayName = item.key ? item.key.split('/').slice(-1)[0] : 'Unknown file'
+function ProgressBar({ percent }: { percent: number }) {
+  const pct = Math.round(clamp01(percent) * 100)
+  return (
+    <div className="w-full h-2 bg-neutral-200 dark:bg-neutral-800 rounded" aria-hidden>
+      <div className="h-2 bg-blue-500 rounded" style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+function nameFromKey(key?: string) {
+  if (!key) return '(no name)'
+  const parts = key.split('/')
+  const last = parts[parts.length - 1]
+  return last || '(no name)'
+}
+
+function computePercent(bytes: number, total: number, completed: boolean) {
+  if (total <= 0) return completed ? 1 : 0
+  const b = Math.max(0, Math.min(bytes, total))
+  return b / total
+}
+
+function useRowSpeed(id: string, rawBps?: number) {
+  const ref = useRef<RowState>({})
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const now = performance.now()
+    const dt = ref.current.lastSampleAt ? now - (ref.current.lastSampleAt || 0) : 0
+    const alpha = calcAlpha(dt || 100)
+    const smoothed = rawBps && rawBps > 0 ? ema(ref.current.speed, rawBps, alpha) : undefined
+    ref.current = { speed: smoothed, lastSampleAt: now }
+    setTick(t => (t + 1) % 1000) // force rerender
+  }, [id, rawBps])
+  return ref.current.speed
+}
+
+function ActionButtons({ job, onRemove }: { job: TransferJobType; onRemove: () => void }) {
+  const status = job.status
+  const canPause = status === 'in-progress'
+  const canResume = status === 'paused' || status === 'queued'
+  const canCancel = status === 'in-progress' || status === 'queued' || status === 'paused'
+  const isTerminal = status === 'completed' || status === 'failed' || status === 'canceled'
+  if (isTerminal) {
     return (
-      <div className="flex items-center gap-3 text-red-500">
-        <div className="min-w-48 truncate" title={item.key || 'Unknown file'}>{displayName}</div>
-        <div className="flex-1">
-          <div className="font-semibold">Failed</div>
-          <div className="text-xs opacity-80">{item.error}</div>
-        </div>
-        <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={clearItem}>Clear</button>
+      <div className="flex justify-end">
+  <button aria-label="Remove job" className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={onRemove}>Remove</button>
       </div>
     )
   }
-
-  const displayName = item.key ? item.key.split('/').slice(-1)[0] : 'Unknown file'
   return (
-    <div className="flex items-center gap-3">
-      <div className="min-w-48 truncate" title={item.key || 'Unknown file'}>{displayName}</div>
-      <div className="flex-1 h-2 bg-neutral-200 dark:bg-neutral-800 rounded">
-        <div className={`h-2 ${item.status === 'failed' ? 'bg-red-500' : 'bg-blue-400'} rounded`} style={{ width: `${item.size > 0 ? Math.min(100, Math.round((item.bytesTransferred / item.size) * 100)) : 0}%` }} />
+    <div className="flex gap-1 justify-end">
+      <button aria-label="Pause job" disabled={!canPause} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'pause' })}>Pause</button>
+      <button aria-label="Resume job" disabled={!canResume} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'resume' })}>Resume</button>
+      <button aria-label="Cancel job" disabled={!canCancel} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'cancel' })}>Cancel</button>
+    </div>
+  )
+}
+
+const TransferItem: React.FC<{ item: TransferItemType; job: TransferJobType }> = ({ item, job }) => {
+  const { transfers, setTransfers } = useStore()
+  const total = item.size || 0
+  const bytes = Math.min(Math.max(0, item.bytesTransferred || 0), total)
+  const completed = item.status === 'completed'
+  const percent = computePercent(bytes, total, completed)
+  const speed = useRowSpeed(item.id, item.status === 'in-progress' ? item.speedBps : undefined)
+  const name = nameFromKey(item.key)
+  const statusText = item.status
+  const isInProgress = item.status === 'in-progress'
+  const verb = job.destDir ? 'Downloading' : 'Uploading'
+
+  function removeItem() {
+    const newItems = { ...transfers.items }
+    delete newItems[item.id]
+    const newJobs = { ...transfers.jobs }
+    if (Object.values(newItems).every(it => it.jobId !== item.jobId)) delete newJobs[item.jobId]
+    setTransfers({ jobs: newJobs, items: newItems })
+  }
+
+  return (
+    <div role="row" aria-live={isInProgress ? 'polite' : undefined} aria-label={isInProgress ? `${verb} ${name}, ${Math.round(percent*100)}%` : name} className="grid grid-cols-[minmax(10rem,1fr)_12rem_14rem_8rem_8rem_10rem] items-center gap-3 py-1">
+      <div role="cell" className="truncate" title={item.key || '(no name)'}>{name}</div>
+      <div role="cell" className="tabular-nums">
+        <div className="flex items-center gap-2">
+          <div className="min-w-10 text-right">{Math.round(percent * 100)}%</div>
+          <div className="flex-1"><ProgressBar percent={percent} /></div>
+        </div>
       </div>
-      <div className="w-40 text-right tabular-nums">{formatBytes(item.bytesTransferred)} / {formatBytes(item.size)}</div>
-      <div className="w-24 text-right text-xs">{item.speedBps ? `${formatBytes(item.speedBps)}/s` : ''}</div>
-      <div className="w-20 text-right text-xs">{item.etaSeconds ? `${item.etaSeconds}s` : ''}</div>
-      <div className="w-20 text-right capitalize text-xs">{item.status}</div>
+      <div role="cell" className="tabular-nums text-right">{formatBytesIEC(bytes)} / {formatBytesIEC(total)}</div>
+      <div role="cell" className="tabular-nums text-right text-xs">{item.status === 'in-progress' && speed && speed > 0 ? `${formatBytesIEC(speed)}/s` : ''}</div>
+      <div role="cell" className="capitalize text-xs text-right">{statusText}</div>
+      {/* Actions column for items intentionally minimal: only Remove on terminal states */}
+      <div role="cell" className="text-right">
+        {(item.status === 'completed' || item.status === 'failed' || item.status === 'canceled') && (
+          <button aria-label="Remove item" className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={removeItem}>Remove</button>
+        )}
+      </div>
     </div>
   )
 }
@@ -55,83 +136,77 @@ function TransferItem({ item }: { item: TransferItemType }) {
 export default function TransferQueue() {
   const { transfers, setTransfers } = useStore()
 
-  useEffect(() => {
-    const off = (window as any).api.transfers.onEvent((evt: any) => {
-      useStore.setState(s => {
-        const jobs = { ...s.transfers.jobs }
-        const items = { ...s.transfers.items }
-        if (evt.type === 'job-state') {
-          jobs[evt.job.id] = evt.job
-          if (evt.job.status === 'failed') {
-            for (const item of Object.values(items)) {
-              if (item.jobId === evt.job.id && item.status !== 'completed') {
-                items[item.id] = { ...item, status: 'failed', error: evt.job.error || 'Job failed' }
-              }
-            }
+  // Throttled event listener to avoid flicker and cap at ~15fps
+  useThrottledListener((evt) => {
+    useStore.setState(s => {
+      const jobs = { ...s.transfers.jobs }
+      const items = { ...s.transfers.items }
+      if (evt.type === 'job-state') {
+        const j = evt.job
+        jobs[j.id] = j
+        if (j.status === 'failed') {
+          for (const it of Object.values(items)) {
+            if (it.jobId === j.id && it.status !== 'completed') items[it.id] = { ...it, status: 'failed', error: j.error || it.error }
           }
         }
-        else if (evt.type === 'item-state') items[evt.item.id] = evt.item
-        return { transfers: { jobs, items } } as any
-      })
+      } else if (evt.type === 'item-state') {
+        const it = evt.item
+        const total = it.size || 0
+        const clamped = Math.min(Math.max(0, it.bytesTransferred || 0), total)
+        items[it.id] = { ...it, bytesTransferred: clamped }
+      }
+      return { transfers: { jobs, items } } as any
     })
-    return () => off()
-  }, [setTransfers])
+  }, 15)
 
-  const jobs = Object.values(transfers.jobs)
-  const items = Object.values(transfers.items)
+  const jobs = useMemo(() => Object.values(transfers.jobs), [transfers.jobs])
+  const allItems = useMemo(() => Object.values(transfers.items), [transfers.items])
 
   function clearJob(jobId: string) {
     const newJobs = { ...transfers.jobs }
     delete newJobs[jobId]
     const newItems = { ...transfers.items }
-    for (const item of Object.values(newItems)) {
-      if (item.jobId === jobId) {
-        delete newItems[item.id]
-      }
-    }
+    for (const item of Object.values(newItems)) if (item.jobId === jobId) delete newItems[item.id]
     setTransfers({ jobs: newJobs, items: newItems })
   }
 
   return (
     <div className="p-2 border-t text-sm bg-neutral-50 dark:bg-neutral-900">
-      <div className="font-semibold mb-1">Transfer Queue</div>
+      <div className="font-semibold mb-2">Transfer Queue</div>
       {jobs.length === 0 && <div className="opacity-60">No active transfers.</div>}
       {jobs.map(job => {
-        const jobItems = items.filter(it => it.jobId === job.id)
-        if (job.status === 'failed') {
+        const jobItems = allItems.filter(it => it.jobId === job.id)
+        const total = job.totalBytes || 0
+        const completed = job.completedBytes || 0
+        const pct = computePercent(completed, total, job.status === 'completed')
+        const title = job.type === 'prefix' ? (job.prefix || '(no name)') : (jobItems[0]?.key || '(no name)')
+        const isTerminal = job.status === 'completed' || job.status === 'failed' || job.status === 'canceled'
+        // For single-object jobs, render just the item row to avoid duplicate appearance
+        if (job.type === 'object' && jobItems.length === 1) {
+          const it = jobItems[0]
           return (
-            <div key={job.id} className="mb-2 p-2 rounded bg-red-500/10">
-              <div className="flex items-center gap-3 text-red-500">
-                <div className="min-w-48">{job.type === 'prefix' ? `Folder: ${job.prefix}` : 'Object'}</div>
-                <div className="flex-1">
-                  <div className="font-semibold">Failed</div>
-                  <div className="text-xs opacity-80">{job.error}</div>
-                </div>
-                <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={() => clearJob(job.id)}>Clear</button>
-              </div>
-              <div className="ml-6 mt-1 space-y-1">
-                {jobItems.slice(0, 5).map((it, idx) => <TransferItem key={idx} item={it} />)}
-              </div>
-            </div>
+            <TransferItem key={it.id} item={it} job={job} />
           )
         }
         return (
-          <div key={job.id} className="mb-2">
-            <div className="flex items-center gap-3">
-              <div className="min-w-48">{job.type === 'prefix' ? `Folder: ${job.prefix}` : 'Object'}</div>
-              <div className="flex-1 h-2 bg-neutral-200 dark:bg-neutral-800 rounded">
-                <div className="h-2 bg-blue-500 rounded" style={{ width: `${job.totalBytes > 0 ? Math.min(100, Math.round((job.completedBytes / job.totalBytes) * 100)) : 0}%` }} />
+          <div key={job.id} className={`mb-3 rounded ${job.status === 'failed' ? 'bg-red-500/5' : ''}`}>
+            <div role="row" className="grid grid-cols-[minmax(10rem,1fr)_12rem_14rem_8rem_8rem_10rem] items-center gap-3 py-1">
+              <div role="cell" className="truncate" title={title}>{job.type === 'prefix' ? `Folder: ${title}` : nameFromKey(title)}</div>
+              <div role="cell" className="tabular-nums">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-10 text-right">{Math.round(pct * 100)}%</div>
+                  <div className="flex-1"><ProgressBar percent={pct} /></div>
+                </div>
               </div>
-              <div className="w-48 text-right tabular-nums">{formatBytes(job.completedBytes)} / {formatBytes(job.totalBytes)}</div>
-              <div className="w-24 text-right capitalize">{job.status}</div>
-              <div className="flex gap-1">
-                <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'pause' })}>Pause</button>
-                <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'resume' })}>Resume</button>
-                <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'cancel' })}>Cancel</button>
-              </div>
+              <div role="cell" className="tabular-nums text-right">{formatBytesIEC(completed)} / {formatBytesIEC(total)}</div>
+              <div role="cell" className="text-xs text-right opacity-70">{/* speed hidden at job level */}</div>
+              <div role="cell" className="capitalize text-xs text-right">{job.status}</div>
+              <div role="cell"><ActionButtons job={job} onRemove={() => clearJob(job.id)} /></div>
             </div>
-            <div className="ml-6 mt-1 space-y-1">
-              {jobItems.slice(0, 5).map((it, idx) => <TransferItem key={idx} item={it} />)}
+            <div className="mt-1 divide-y divide-neutral-200/30">
+              {jobItems.map(it => (
+                <TransferItem key={it.id} item={it} job={job} />
+              ))}
             </div>
           </div>
         )

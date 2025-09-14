@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, dialog } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -20,7 +20,7 @@ const DEFAULTS = {
   partConcurrency: 8,
   partSizeMiB: 16,
   multipartThresholdMiB: 16,
-  overwritePolicy: 'skip' as const
+  overwritePolicy: 'prompt' as const
 }
 
 type Manifest = {
@@ -116,7 +116,7 @@ function splitName(name: string) {
   return { base, ext }
 }
 
-async function chooseDestPath(dir: string, name: string, policy: 'skip'|'overwrite'|'rename'|'prompt'): Promise<{ path: string; action: 'write'|'skip' } > {
+async function chooseDestPath(dir: string, name: string, policy: 'skip'|'overwrite'|'rename'|'prompt', win?: BrowserWindow): Promise<{ path: string; action: 'write'|'skip' } > {
   const p = path.join(dir, name)
   if (!(await fileExists(p))) return { path: p, action: 'write' }
   if (policy === 'overwrite') return { path: p, action: 'write' }
@@ -127,6 +127,38 @@ async function chooseDestPath(dir: string, name: string, policy: 'skip'|'overwri
     if (!(await fileExists(candidate))) return { path: candidate, action: 'write' }
   }
   return { path: p, action: 'skip' }
+}
+
+async function promptOnConflict(win: BrowserWindow | null, destDir: string, baseName: string): Promise<{ path: string; action: 'write'|'skip' }> {
+  const parent = win || BrowserWindow.getFocusedWindow() || null
+  const p = path.join(destDir, baseName)
+  if (!(await fileExists(p))) return { path: p, action: 'write' }
+  const { base, ext } = splitName(baseName)
+  const res = await dialog.showMessageBox(parent!, {
+    type: 'question',
+    buttons: ['Overwrite', 'Skip', 'Rename'],
+    defaultId: 2,
+    cancelId: 1,
+    title: 'File already exists',
+    message: `${baseName} already exists in the destination folder. What would you like to do?`,
+    noLink: true
+  })
+  const idx = res.response
+  if (idx === 0) {
+    // Overwrite
+    return { path: p, action: 'write' }
+  } else if (idx === 1) {
+    // Skip
+    return { path: p, action: 'skip' }
+  } else {
+    // Rename: find next available
+    for (let i = 1; i < 10000; i++) {
+      const candidateName = `${base} (${i})${ext}`
+      const candidate = path.join(destDir, candidateName)
+      if (!(await fileExists(candidate))) return { path: candidate, action: 'write' }
+    }
+    return { path: p, action: 'skip' }
+  }
 }
 
 async function headObject(bucket: string, key: string) {
@@ -154,7 +186,10 @@ export async function startObject(win: BrowserWindow | null, params: StartObject
   const settings = applyDefaults(params.settings)
   const baseName = path.basename(params.key)
   const name = process.platform === 'win32' ? sanitizeWindows(baseName) : baseName
-  const chosen = await chooseDestPath(params.destDir, name, settings.overwritePolicy)
+  // Prompt on conflict when policy is 'prompt'
+  const chosen = settings.overwritePolicy === 'prompt'
+    ? await promptOnConflict(win, params.destDir, name)
+    : await chooseDestPath(params.destDir, name, settings.overwritePolicy, win || undefined)
   const destPath = safeJoin(params.destDir, path.basename(chosen.path))
   const jobId = newId('job')
   const itemId = newId('item')
@@ -194,7 +229,7 @@ export async function startObject(win: BrowserWindow | null, params: StartObject
 
   try {
     await ensureDir(path.dirname(destPath))
-    if (chosen.action === 'skip') {
+  if (chosen.action === 'skip') {
       it.status = 'completed'
       it.bytesTransferred = it.size
       job.completedBytes += it.size
@@ -249,7 +284,9 @@ export async function startPrefix(win: BrowserWindow | null, params: StartPrefix
     active++
     const baseName = k.key.slice(params.prefix.length).replace(/^\//, '')
     const safeName = process.platform === 'win32' ? sanitizeWindows(baseName) : baseName
-    const chosen = await chooseDestPath(params.destDir, safeName, settings.overwritePolicy)
+    const chosen = settings.overwritePolicy === 'prompt'
+      ? await promptOnConflict(win, params.destDir, safeName)
+      : await chooseDestPath(params.destDir, safeName, settings.overwritePolicy, win || undefined)
     const destPath = safeJoin(params.destDir, path.basename(chosen.path))
     await ensureDir(path.dirname(destPath))
     const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key: k.key, size: k.size, etag: k.etag, destPath, status: 'queued', bytesTransferred: 0 }

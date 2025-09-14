@@ -5,6 +5,7 @@ import { trace, info, warn } from '../lib/log'
 
 export default function Topbar() {
   const { profile, connected, selectedKey, bucket, setProfile, setConnected, selectBucket, setConnectionError, setIsSwitchingProfile, startDownloadSelected } = useStore() as any
+  const { openSettings } = useStore() as any
   const [connecting, setConnecting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [status, setStatus] = useState('')
@@ -112,6 +113,11 @@ export default function Topbar() {
         ) : (
           <span className="opacity-70">{connecting ? 'Connecting.€' : (status || (connected ? `Connected${profile ? ` .€ ${profile}` : ''}` : 'Not connected'))}</span>
         )}
+      </div>
+      <div className="pl-2">
+        <button className="px-2 py-1 text-sm rounded bg-neutral-200 dark:bg-neutral-800" onClick={openSettings}>
+          Settings
+        </button>
       </div>
     </div>
   )

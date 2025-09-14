@@ -2,6 +2,7 @@ import Topbar from './components/Topbar'
 import SidebarBuckets from './components/SidebarBuckets'
 import ObjectExplorer from './components/ObjectExplorer'
 import TransferQueue from './components/TransferQueue'
+import SettingsModal from './components/SettingsModal'
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
         <ObjectExplorer />
       </div>
       <TransferQueue />
+  <SettingsModal />
     </div>
   )
 }
