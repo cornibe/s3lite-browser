@@ -58,6 +58,71 @@ export function registerIpc() {
     getLogger().info('fs', 'setAwsFiles', { credentialsFile: params.credentialsFile || null, configFile: params.configFile || null })
     return { ok: true as const }
   })
+  
+  ipcMain.handle(IpcChannels.S3_CREATE_BUCKET, async (_e, params) => {
+    const t = Date.now()
+    try {
+      await s3.createBucket(params.bucketName, params.region)
+      getLogger().info('ipc', 's3:createBucket ok', { durationMs: Date.now() - t, bucket: params.bucketName, region: params.region || 'us-east-1' })
+      return { ok: true as const }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to create bucket'
+      getLogger().warn('ipc', 's3:createBucket error', { durationMs: Date.now() - t, bucket: params.bucketName, error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.S3_DELETE_OBJECT, async (_e, params) => {
+    const t = Date.now()
+    try {
+      await s3.deleteObject(params.bucket, params.key)
+      getLogger().info('ipc', 's3:deleteObject ok', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key })
+      return { ok: true as const }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to delete object'
+      getLogger().warn('ipc', 's3:deleteObject error', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.S3_DELETE_OBJECTS, async (_e, params) => {
+    const t = Date.now()
+    try {
+      const result = await s3.deleteObjects(params.bucket, params.keys)
+      getLogger().info('ipc', 's3:deleteObjects ok', { durationMs: Date.now() - t, bucket: params.bucket, totalKeys: params.keys.length, deleted: result.deleted.length, errors: result.errors.length })
+      return { ok: true as const, result }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to delete objects'
+      getLogger().warn('ipc', 's3:deleteObjects error', { durationMs: Date.now() - t, bucket: params.bucket, totalKeys: params.keys.length, error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.S3_DELETE_FOLDER, async (_e, params) => {
+    const t = Date.now()
+    try {
+      const result = await s3.deleteFolder(params.bucket, params.prefix)
+      getLogger().info('ipc', 's3:deleteFolder ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, deleted: result.deleted.length, errors: result.errors.length })
+      return { ok: true as const, result }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to delete folder'
+      getLogger().warn('ipc', 's3:deleteFolder error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.S3_CREATE_FOLDER, async (_e, params) => {
+    const t = Date.now()
+    try {
+      await s3.createFolder(params.bucket, params.prefix)
+      getLogger().info('ipc', 's3:createFolder ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix })
+      return { ok: true as const }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to create folder'
+      getLogger().warn('ipc', 's3:createFolder error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
   ipcMain.handle(IpcChannels.UI_PICK_CREDENTIALS, async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const res = await dialog.showOpenDialog(win, { title: 'Select AWS credentials file', properties: ['openFile'], filters: [{ name: 'AWS', extensions: ['ini','txt','credentials',''] }] })

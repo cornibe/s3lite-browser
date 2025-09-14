@@ -30,6 +30,37 @@ export type ProfileInfo = {
   isSso?: boolean
 }
 
+// New operation types
+export type CreateBucketParams = {
+  bucketName: string
+  region?: string
+}
+
+export type DeleteObjectParams = {
+  bucket: string
+  key: string
+}
+
+export type DeleteObjectsParams = {
+  bucket: string
+  keys: string[]
+}
+
+export type DeleteFolderParams = {
+  bucket: string
+  prefix: string
+}
+
+export type CreateFolderParams = {
+  bucket: string
+  prefix: string
+}
+
+export type DeleteResult = {
+  deleted: string[]
+  errors: Array<{ key: string; error: string }>
+}
+
 // Transfer types
 export type DownloadSettings = {
   objectConcurrency?: number
@@ -107,6 +138,11 @@ export interface RendererAPI {
     listObjects(params: ListObjectsParams): Promise<ListObjectsResult>
     listProfiles(): Promise<ProfileInfo[]>
     setAwsFiles(params: { credentialsFile?: string; configFile?: string }): Promise<{ ok: true }>
+    createBucket(params: CreateBucketParams): Promise<{ ok: true } | { ok: false; error: string }>
+    deleteObject(params: DeleteObjectParams): Promise<{ ok: true } | { ok: false; error: string }>
+    deleteObjects(params: DeleteObjectsParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
+    deleteFolder(params: DeleteFolderParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
+    createFolder(params: CreateFolderParams): Promise<{ ok: true } | { ok: false; error: string }>
   }
   env: {
     isDev(): boolean
@@ -139,6 +175,11 @@ export const IpcChannels = {
   S3_LIST_OBJECTS: 's3:listObjects',
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
+  S3_CREATE_BUCKET: 's3:createBucket',
+  S3_DELETE_OBJECT: 's3:deleteObject',
+  S3_DELETE_OBJECTS: 's3:deleteObjects',
+  S3_DELETE_FOLDER: 's3:deleteFolder',
+  S3_CREATE_FOLDER: 's3:createFolder',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',

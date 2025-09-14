@@ -7,6 +7,11 @@ const Channels = {
   S3_LIST_OBJECTS: 's3:listObjects',
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
+  S3_CREATE_BUCKET: 's3:createBucket',
+  S3_DELETE_OBJECT: 's3:deleteObject',
+  S3_DELETE_OBJECTS: 's3:deleteObjects',
+  S3_DELETE_FOLDER: 's3:deleteFolder',
+  S3_CREATE_FOLDER: 's3:createFolder',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
@@ -29,7 +34,12 @@ const api: RendererAPI = {
     listBuckets: () => ipcRenderer.invoke(Channels.S3_LIST_BUCKETS),
     listObjects: (params) => ipcRenderer.invoke(Channels.S3_LIST_OBJECTS, params),
     listProfiles: () => ipcRenderer.invoke(Channels.S3_LIST_PROFILES),
-    setAwsFiles: (params) => ipcRenderer.invoke(Channels.S3_SET_AWS_FILES, params)
+    setAwsFiles: (params) => ipcRenderer.invoke(Channels.S3_SET_AWS_FILES, params),
+    createBucket: (params) => ipcRenderer.invoke(Channels.S3_CREATE_BUCKET, params),
+    deleteObject: (params) => ipcRenderer.invoke(Channels.S3_DELETE_OBJECT, params),
+    deleteObjects: (params) => ipcRenderer.invoke(Channels.S3_DELETE_OBJECTS, params),
+    deleteFolder: (params) => ipcRenderer.invoke(Channels.S3_DELETE_FOLDER, params),
+    createFolder: (params) => ipcRenderer.invoke(Channels.S3_CREATE_FOLDER, params)
   },
   env: {
     isDev: () => process.env.NODE_ENV !== 'production'

@@ -1,8 +1,10 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
 import { useObjects } from '../lib/query'
 import { useStore } from '../lib/store'
-import type { S3ObjectItem, S3Folder } from '../../electron/types'
+import type { S3ObjectItem, S3Folder, TransferEvent } from '../../electron/types'
 import { trace } from '../lib/log'
+import CreateFolderModal from './CreateFolderModal'
+import DeleteConfirmationModal from './DeleteConfirmationModal'
 
 type Entry = (
   | { type: 'folder'; data: S3Folder }
@@ -33,6 +35,12 @@ export default function ObjectExplorer() {
   const listRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
   const [showProps, setShowProps] = useState<{ type: 'object' | 'folder'; data: any } | null>(null)
+  const [showCreateFolder, setShowCreateFolder] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    item: Entry
+    title: string
+    message: string
+  } | null>(null)
 
   // Reset prefix and selection when profile or bucket changes or when disconnected
   // This prevents stale buckets/objects from previous profile remaining visible
@@ -47,6 +55,34 @@ export default function ObjectExplorer() {
     setPrefix('')
     setSelectedKey(undefined)
   }, [connected, profile, bucket, setPrefix, setSelectedKey])
+
+  // Listen for upload completion events to auto-refresh the object list
+  useEffect(() => {
+    if (!bucket) return
+    
+    // Track jobs to their bucket mapping
+    const jobBuckets = new Map<string, string>()
+    
+    const unsubscribe = (window as any).api.transfers.onEvent((event: TransferEvent) => {
+      if (event.type === 'job-state' && event.job) {
+        // Track which bucket each job is for
+        jobBuckets.set(event.job.id, event.job.bucket)
+      } else if (event.type === 'job-complete') {
+        // Check if this completed job was for the current bucket
+        const jobBucket = jobBuckets.get(event.jobId)
+        if (jobBucket === bucket) {
+          // Slight delay to ensure S3 consistency
+          setTimeout(() => {
+            refetch()
+          }, 500)
+        }
+        // Clean up the job tracking
+        jobBuckets.delete(event.jobId)
+      }
+    })
+    
+    return unsubscribe
+  }, [bucket, refetch])
 
   const items: Entry[] = useMemo(() => {
     const pages = data?.pages ?? []
@@ -201,6 +237,55 @@ export default function ObjectExplorer() {
     setContextMenu(null)
   }
 
+  const handleCreateFolder = async (folderName: string) => {
+    const folderPrefix = prefix + folderName
+    const result = await (window as any).api.s3.createFolder({ bucket, prefix: folderPrefix })
+    if (!result.ok) {
+      throw new Error(result.error)
+    }
+    // Refresh the object list
+    await refetch()
+  }
+
+  const handleDelete = (item: Entry) => {
+    const isFolder = item.type === 'folder'
+    const name = isFolder ? item.data.prefix : item.data.key
+    
+    setDeleteConfirmation({
+      item,
+      title: `Delete ${isFolder ? 'Folder' : 'File'}`,
+      message: `Are you sure you want to delete "${name}"?${isFolder ? ' This will delete all objects in the folder.' : ''}`
+    })
+    setContextMenu(null)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmation) return
+    
+    const { item } = deleteConfirmation
+    
+    if (item.type === 'folder') {
+      const result = await (window as any).api.s3.deleteFolder({ bucket, prefix: item.data.prefix })
+      if (!result.ok) {
+        throw new Error(result.error)
+      }
+    } else {
+      const result = await (window as any).api.s3.deleteObject({ bucket, key: item.data.key })
+      if (!result.ok) {
+        throw new Error(result.error)
+      }
+    }
+    
+    // Clear selection if we deleted the selected item
+    const deletedKey = item.type === 'object' ? item.data.key : item.data.prefix
+    if (selectedKey === deletedKey) {
+      setSelected(undefined, undefined)
+    }
+    
+    // Refresh the object list
+    await refetch()
+  }
+
   const crumbs = splitPrefix(prefix)
   const parentPrefix = prefix.split('/').slice(0, -2).join('/') + (prefix ? '/' : '')
 
@@ -225,7 +310,27 @@ export default function ObjectExplorer() {
             </div>
           ))}
         </div>
-    {prefix && <button className="ml-auto text-xs underline" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
+        <div className="ml-auto flex items-center gap-2">
+          {bucket && (
+            <>
+              <button
+                onClick={() => refetch()}
+                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                title="Refresh folder contents"
+              >
+                ↻ Refresh
+              </button>
+              <button
+                onClick={() => setShowCreateFolder(true)}
+                className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                title="Create new folder"
+              >
+                + Folder
+              </button>
+            </>
+          )}
+          {prefix && <button className="text-xs underline" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
+        </div>
       </div>
 
       {/* Connection error banner for visibility in main panel */}
@@ -288,6 +393,10 @@ export default function ObjectExplorer() {
         >
           <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" onClick={() => handleDownload(contextMenu.item)}>Download</button>
           <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+          <div className="border-t border-neutral-200 dark:border-neutral-600"></div>
+          <button className="block w-full text-left px-3 py-2 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400" onClick={() => handleDelete(contextMenu.item)}>
+            Delete
+          </button>
         </div>
       )}
 
@@ -315,6 +424,22 @@ export default function ObjectExplorer() {
           </div>
         </div>
       )}
+
+      <CreateFolderModal
+        isOpen={showCreateFolder}
+        onClose={() => setShowCreateFolder(false)}
+        onCreateFolder={handleCreateFolder}
+        currentPrefix={prefix}
+      />
+
+      <DeleteConfirmationModal
+        isOpen={!!deleteConfirmation}
+        onClose={() => setDeleteConfirmation(null)}
+        onConfirm={confirmDelete}
+        title={deleteConfirmation?.title || ''}
+        message={deleteConfirmation?.message || ''}
+        itemType={deleteConfirmation?.item.type === 'folder' ? 'folder' : 'file'}
+      />
     </div>
   )
 }

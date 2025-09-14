@@ -1,4 +1,4 @@
-import { S3Client, ListBucketsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
+import { S3Client, ListBucketsCommand, ListObjectsV2Command, CreateBucketCommand, DeleteObjectCommand, DeleteObjectsCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -199,6 +199,19 @@ function toFriendlyError(context: string, err: unknown): Error {
     case 'ECONNREFUSED':
       msg = `${context} failed: Network error contacting AWS. Check connectivity and region.`
       break
+    case 'BucketAlreadyExists':
+    case 'BucketAlreadyOwnedByYou':
+      msg = `${context} failed: Bucket already exists.`
+      break
+    case 'InvalidBucketName':
+      msg = `${context} failed: Invalid bucket name. Bucket names must be 3-63 characters, lowercase, and follow DNS naming conventions.`
+      break
+    case 'NoSuchBucket':
+      msg = `${context} failed: Bucket does not exist.`
+      break
+    case 'NoSuchKey':
+      msg = `${context} failed: Object does not exist.`
+      break
     default:
       if (typeof code === 'number') {
         if (code === 403) msg = `${context} failed: Access denied (403).`
@@ -209,4 +222,145 @@ function toFriendlyError(context: string, err: unknown): Error {
   }
   const friendly = new Error(msg)
   return friendly
+}
+
+export async function createBucket(bucketName: string, region?: string): Promise<void> {
+  const c = ensureClient()
+  const start = Date.now()
+  try {
+    const commandInput: any = { Bucket: bucketName }
+    if (region && region !== 'us-east-1') {
+      commandInput.CreateBucketConfiguration = { LocationConstraint: region }
+    }
+    const command = new CreateBucketCommand(commandInput)
+    await c.send(command)
+    getLogger().info('aws', 'createBucket', { bucket: bucketName, region: region || 'us-east-1', durationMs: Date.now() - start })
+  } catch (err) {
+    throw toFriendlyError(`Create bucket "${bucketName}"`, err)
+  }
+}
+
+export async function deleteObject(bucket: string, key: string): Promise<void> {
+  const c = ensureClient()
+  const start = Date.now()
+  try {
+    await c.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+    getLogger().info('aws', 'deleteObject', { bucket, key, durationMs: Date.now() - start })
+  } catch (err) {
+    throw toFriendlyError(`Delete object s3://${bucket}/${key}`, err)
+  }
+}
+
+export async function deleteObjects(bucket: string, keys: string[]): Promise<{ deleted: string[]; errors: Array<{ key: string; error: string }> }> {
+  const c = ensureClient()
+  const start = Date.now()
+  const deleted: string[] = []
+  const errors: Array<{ key: string; error: string }> = []
+
+  if (keys.length === 0) {
+    return { deleted, errors }
+  }
+
+  try {
+    // S3 allows up to 1000 objects per delete request
+    const batches: string[][] = []
+    for (let i = 0; i < keys.length; i += 1000) {
+      batches.push(keys.slice(i, i + 1000))
+    }
+
+    for (const batch of batches) {
+      const command = new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: {
+          Objects: batch.map(key => ({ Key: key })),
+          Quiet: false
+        }
+      })
+      
+      const result = await c.send(command)
+      
+      // Track successful deletions
+      if (result.Deleted) {
+        for (const del of result.Deleted) {
+          if (del.Key) deleted.push(del.Key)
+        }
+      }
+      
+      // Track errors
+      if (result.Errors) {
+        for (const err of result.Errors) {
+          if (err.Key) {
+            errors.push({ 
+              key: err.Key, 
+              error: err.Message || err.Code || 'Unknown error' 
+            })
+          }
+        }
+      }
+    }
+
+    getLogger().info('aws', 'deleteObjects', { bucket, totalKeys: keys.length, deleted: deleted.length, errors: errors.length, durationMs: Date.now() - start })
+    return { deleted, errors }
+  } catch (err) {
+    throw toFriendlyError(`Delete objects in s3://${bucket}`, err)
+  }
+}
+
+export async function deleteFolder(bucket: string, prefix: string): Promise<{ deleted: string[]; errors: Array<{ key: string; error: string }> }> {
+  const c = ensureClient()
+  const start = Date.now()
+  const allDeleted: string[] = []
+  const allErrors: Array<{ key: string; error: string }> = []
+
+  try {
+    let continuationToken: string | undefined = undefined
+    
+    do {
+      // List all objects with the prefix
+      const listResult = await c.send(new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+        MaxKeys: 1000
+      }))
+
+      const keys = (listResult.Contents || [])
+        .map(obj => obj.Key!)
+        .filter(Boolean)
+
+      if (keys.length > 0) {
+        const deleteResult = await deleteObjects(bucket, keys)
+        allDeleted.push(...deleteResult.deleted)
+        allErrors.push(...deleteResult.errors)
+      }
+
+      continuationToken = listResult.IsTruncated ? listResult.NextContinuationToken : undefined
+    } while (continuationToken)
+
+    getLogger().info('aws', 'deleteFolder', { bucket, prefix, deleted: allDeleted.length, errors: allErrors.length, durationMs: Date.now() - start })
+    return { deleted: allDeleted, errors: allErrors }
+  } catch (err) {
+    throw toFriendlyError(`Delete folder s3://${bucket}/${prefix}`, err)
+  }
+}
+
+export async function createFolder(bucket: string, prefix: string): Promise<void> {
+  const c = ensureClient()
+  const start = Date.now()
+  try {
+    // Ensure prefix ends with / to represent a folder
+    const folderKey = prefix.endsWith('/') ? prefix : `${prefix}/`
+    
+    // Create an empty object with the folder key
+    await c.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: folderKey,
+      Body: '',
+      ContentLength: 0
+    }))
+    
+    getLogger().info('aws', 'createFolder', { bucket, prefix: folderKey, durationMs: Date.now() - start })
+  } catch (err) {
+    throw toFriendlyError(`Create folder s3://${bucket}/${prefix}`, err)
+  }
 }

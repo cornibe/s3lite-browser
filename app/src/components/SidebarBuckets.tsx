@@ -1,11 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useBuckets } from '../lib/query'
 import { useStore } from '../lib/store'
 import { trace, warn } from '../lib/log'
+import CreateBucketModal from './CreateBucketModal'
 
 export default function SidebarBuckets() {
   const { bucket, profile, connected, selectBucket, connectionError, setConnectionError, setConnected, isSwitchingProfile } = useStore() as any
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
+  const [showCreateBucket, setShowCreateBucket] = useState(false)
 
   // If listing buckets fails (for example missing region or invalid creds),
   // surface that as a connectionError and clear any selected bucket/prefix so
@@ -28,9 +30,31 @@ export default function SidebarBuckets() {
     if (!bucket && data && data.length > 0) selectBucket(data[0])
   }, [connected, bucket, data, selectBucket])
 
+  const handleCreateBucket = async (bucketName: string, region?: string) => {
+    const result = await (window as any).api.s3.createBucket({ bucketName, region })
+    if (!result.ok) {
+      throw new Error(result.error)
+    }
+    // Refresh bucket list
+    await refetch()
+    // Select the newly created bucket
+    selectBucket(bucketName)
+  }
+
   return (
     <div className="w-64 border-r overflow-auto">
-      <div className="px-3 py-2 text-xs uppercase opacity-70 tracking-wide">Buckets</div>
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
+        {connected && !isSwitchingProfile && (
+          <button
+            onClick={() => setShowCreateBucket(true)}
+            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            title="Create new bucket"
+          >
+            + New
+          </button>
+        )}
+      </div>
       {!connected && (
         <div className="px-3 py-2 text-sm opacity-80">
           Not connected. Select a profile to connect.
@@ -70,6 +94,12 @@ export default function SidebarBuckets() {
           <div className="px-3 py-2 text-sm opacity-70">No buckets found.</div>
         )
       )}
+      
+      <CreateBucketModal
+        isOpen={showCreateBucket}
+        onClose={() => setShowCreateBucket(false)}
+        onCreateBucket={handleCreateBucket}
+      />
     </div>
   )
 }
