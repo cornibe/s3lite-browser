@@ -459,12 +459,69 @@ export function control(jobId: string, action: 'pause'|'resume'|'cancel'|'retry'
 
 export async function startUpload(win: BrowserWindow | null, params: StartUploadParams) {
   const settings = applyDefaults(params.settings)
-  const jobId = newId('job')
   const prefix = params.prefix ? params.prefix.replace(/\/+/g, '/').replace(/^\//, '').replace(/\/?$/, '/') : ''
+  
+  // For multiple files without a prefix, create individual object jobs instead of a single prefix job
+  if (params.files.length > 1 && !prefix) {
+    const jobIds: string[] = []
+    for (const file of params.files) {
+      const jobId = newId('job')
+      getLogger().debug('xfer', 'startUpload individual', { jobId, bucket: params.bucket, file: file.name })
+      const job: TransferJob = {
+        id: jobId,
+        type: 'object',
+        bucket: params.bucket,
+        prefix: '',
+        destDir: '',
+        status: 'queued',
+        totalBytes: file.size,
+        completedBytes: 0,
+        itemCount: 1,
+        completedCount: 0,
+        settings
+      } as any
+      jobs.set(jobId, job)
+      emit(win, { type: 'job-state', job })
+      
+      const key = file.name || path.basename(file.path)
+      const it: TransferItem = { 
+        id: newId('item'), 
+        jobId, 
+        bucket: params.bucket, 
+        key, 
+        size: file.size, 
+        destPath: file.path, 
+        status: 'queued', 
+        bytesTransferred: 0 
+      }
+      items.set(it.id, it)
+      emit(win, { type: 'item-state', jobId, item: it })
+      
+      // Start upload for this individual file
+      uploadOne(win, job, it, file.path, file.size, settings).then(() => {
+        job.completedCount = 1
+        job.status = 'completed'
+        emit(win, { type: 'job-state', job })
+        emit(win, { type: 'job-complete', jobId })
+      }).catch((e) => {
+        it.status = 'failed'
+        it.error = (e as any)?.message || String(e)
+        job.status = 'failed'
+        emit(win, { type: 'item-state', jobId, item: it })
+        emit(win, { type: 'job-error', jobId, error: it.error! })
+      })
+      
+      jobIds.push(jobId)
+    }
+    return jobIds[0] // Return first job ID for compatibility
+  }
+  
+  // Original logic for single files or files with a prefix
+  const jobId = newId('job')
   getLogger().debug('xfer', 'startUpload', { jobId, bucket: params.bucket, prefix, files: params.files.length })
   
-  // Use 'object' type for single file uploads, 'prefix' for multiple files or when prefix is specified
-  const jobType = (params.files.length === 1 && !prefix) ? 'object' : 'prefix'
+  // Use 'object' type for single file uploads, 'prefix' for multiple files with prefix
+  const jobType = (params.files.length === 1) ? 'object' : 'prefix'
   
   const job: TransferJob = {
     id: jobId,
