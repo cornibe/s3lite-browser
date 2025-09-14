@@ -50,7 +50,8 @@ function nameFromKey(key?: string) {
 }
 
 function computePercent(bytes: number, total: number, completed: boolean) {
-  if (total <= 0) return completed ? 1 : 0
+  if (completed) return 1  // Always show 100% for completed items
+  if (total <= 0) return 0
   const b = Math.max(0, Math.min(bytes, total))
   return b / total
 }
@@ -94,8 +95,8 @@ function ActionButtons({ job, onRemove }: { job: TransferJobType; onRemove: () =
 const TransferItem: React.FC<{ item: TransferItemType; job: TransferJobType }> = ({ item, job }) => {
   const { transfers, setTransfers } = useStore()
   const total = item.size || 0
-  const bytes = Math.min(Math.max(0, item.bytesTransferred || 0), total)
   const completed = item.status === 'completed'
+  const bytes = completed ? total : Math.min(Math.max(0, item.bytesTransferred || 0), total)
   const percent = computePercent(bytes, total, completed)
   const speed = useRowSpeed(item.id, item.status === 'in-progress' ? item.speedBps : undefined)
   const name = nameFromKey(item.key)
@@ -152,8 +153,11 @@ export default function TransferQueue() {
       } else if (evt.type === 'item-state') {
         const it = evt.item
         const total = it.size || 0
+        // Ensure bytesTransferred never exceeds total size
         const clamped = Math.min(Math.max(0, it.bytesTransferred || 0), total)
-        items[it.id] = { ...it, bytesTransferred: clamped }
+        // For completed items, ensure bytesTransferred equals total
+        const finalBytes = it.status === 'completed' ? total : clamped
+        items[it.id] = { ...it, bytesTransferred: finalBytes }
       }
       return { transfers: { jobs, items } } as any
     })
@@ -179,7 +183,22 @@ export default function TransferQueue() {
         const total = job.totalBytes || 0
         const completed = job.completedBytes || 0
         const pct = computePercent(completed, total, job.status === 'completed')
-        const title = job.type === 'prefix' ? (job.prefix || '(no name)') : (jobItems[0]?.key || '(no name)')
+        
+        // Better title generation based on job type and content
+        let title: string
+        if (job.type === 'object' && jobItems.length === 1) {
+          title = nameFromKey(jobItems[0]?.key) || '(no name)'
+        } else if (job.type === 'prefix') {
+          if (job.prefix && job.prefix !== '') {
+            title = job.prefix.replace(/\/$/, '') || '(no name)'
+          } else {
+            // Multiple files without a prefix - show file count
+            title = `${job.itemCount} file${job.itemCount !== 1 ? 's' : ''}`
+          }
+        } else {
+          title = jobItems[0]?.key || '(no name)'
+        }
+        
         const isTerminal = job.status === 'completed' || job.status === 'failed' || job.status === 'canceled'
         // For single-object jobs, render just the item row to avoid duplicate appearance
         if (job.type === 'object' && jobItems.length === 1) {
@@ -191,7 +210,9 @@ export default function TransferQueue() {
         return (
           <div key={job.id} className={`mb-3 rounded ${job.status === 'failed' ? 'bg-red-500/5' : ''}`}>
             <div role="row" className="grid grid-cols-[minmax(10rem,1fr)_12rem_14rem_8rem_8rem_10rem] items-center gap-3 py-1">
-              <div role="cell" className="truncate" title={title}>{job.type === 'prefix' ? `Folder: ${title}` : nameFromKey(title)}</div>
+              <div role="cell" className="truncate" title={title}>
+                {job.type === 'prefix' && job.prefix && job.prefix !== '' ? `Folder: ${title}` : title}
+              </div>
               <div role="cell" className="tabular-nums">
                 <div className="flex items-center gap-2">
                   <div className="min-w-10 text-right">{Math.round(pct * 100)}%</div>

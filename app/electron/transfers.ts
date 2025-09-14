@@ -462,9 +462,13 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
   const jobId = newId('job')
   const prefix = params.prefix ? params.prefix.replace(/\/+/g, '/').replace(/^\//, '').replace(/\/?$/, '/') : ''
   getLogger().debug('xfer', 'startUpload', { jobId, bucket: params.bucket, prefix, files: params.files.length })
+  
+  // Use 'object' type for single file uploads, 'prefix' for multiple files or when prefix is specified
+  const jobType = (params.files.length === 1 && !prefix) ? 'object' : 'prefix'
+  
   const job: TransferJob = {
     id: jobId,
-    type: 'prefix',
+    type: jobType,
     bucket: params.bucket,
     prefix,
     destDir: '',
@@ -522,8 +526,12 @@ async function uploadOne(win: BrowserWindow | null, job: TransferJob, it: Transf
     getLogger().warn('xfer', 'upload stat missing', { filePath })
     throw new Error(msg)
   }
+  
+  if (job.status === 'queued') job.status = 'in-progress'
   it.status = 'in-progress'
   it.startedAt = Date.now()
+  it.bytesTransferred = 0  // Ensure clean start
+  emit(win, { type: 'job-state', job })
   emit(win, { type: 'item-state', jobId: job.id, item: it })
 
   const threshold = settings.multipartThresholdMiB * 1024 * 1024
@@ -532,19 +540,28 @@ async function uploadOne(win: BrowserWindow | null, job: TransferJob, it: Transf
 
   it.status = 'completed'
   it.completedAt = Date.now()
-  job.completedBytes += it.size
+  it.bytesTransferred = it.size  // Ensure 100% completion
+  recalcJobProgress(job)
   emit(win, { type: 'item-state', jobId: job.id, item: it })
+  emit(win, { type: 'job-state', job })
 }
 
 async function uploadSimple(win: BrowserWindow | null, job: TransferJob, it: TransferItem, filePath: string) {
   const c = ensureClient()
   const rs = fs.createReadStream(filePath)
+  
   // Attach error handler to avoid unhandledRejection from stream
   await new Promise<void>((resolve, reject) => {
     rs.once('error', reject)
-    c.send(new PutObjectCommand({ Bucket: it.bucket, Key: it.key, Body: rs })).then(() => resolve(), reject)
+    c.send(new PutObjectCommand({ Bucket: it.bucket, Key: it.key, Body: rs })).then(() => {
+      // Set final progress after upload completes
+      it.bytesTransferred = it.size
+      recalcJobProgress(job)
+      emit(win, { type: 'item-state', jobId: job.id, item: it })
+      emit(win, { type: 'job-state', job })
+      resolve()
+    }, reject)
   })
-  // Minimal progress: read stream can be tapped for bytes
 }
 
 async function uploadMultipart(win: BrowserWindow | null, job: TransferJob, it: TransferItem, filePath: string, settings: ReturnType<typeof applyDefaults>) {
