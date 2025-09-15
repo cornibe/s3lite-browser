@@ -4,7 +4,7 @@ import path from 'path'
 import os from 'os'
 import { getLogger } from './log'
 import * as transfers from './transfers'
-import type { S3InitParams, ListObjectsParams, ListObjectsResult, ProfileInfo } from './types'
+import type { S3InitParams, ListObjectsParams, ListObjectsResult, ProfileInfo, FolderStatsPageParams, FolderStatsPageResult } from './types'
 
 let client: S3Client | null = null
 let currentProfile: string | undefined
@@ -80,6 +80,31 @@ export async function listObjects(params: ListObjectsParams): Promise<ListObject
     return { folders, objects, nextToken }
   } catch (err) {
     throw toFriendlyError(`List Objects in s3://${params.bucket}/${params.prefix ?? ''}`, err)
+  }
+}
+
+// Returns a single page of folder stats (object count, bytes) under a prefix.
+// Uses pagination token to continue. Caller can loop for full totals or page in UI.
+export async function folderStatsPage(params: FolderStatsPageParams): Promise<FolderStatsPageResult> {
+  const c = ensureClient()
+  const start = Date.now()
+  try {
+    const out = await c.send(new ListObjectsV2Command({
+      Bucket: params.bucket,
+      Prefix: params.prefix,
+      ContinuationToken: params.token,
+      MaxKeys: params.maxKeys ?? 2000
+      // No Delimiter to include all nested objects
+    }))
+    const pageObjects = (out.Contents ?? []).filter(o => (o.Key ?? '').length > 0)
+    // Count all objects including possible zero-size "folder markers" because they are still keys in the prefix
+    const objects = pageObjects.length
+    const bytes = pageObjects.reduce((sum, o) => sum + (o.Size ?? 0), 0)
+    const nextToken = out.IsTruncated ? out.NextContinuationToken : undefined
+    getLogger().debug('aws', 'folderStatsPage', { bucket: params.bucket, prefix: params.prefix, objects, bytes, truncated: Boolean(nextToken), durationMs: Date.now() - start })
+    return { objects, bytes, nextToken }
+  } catch (err) {
+    throw toFriendlyError(`Scan folder s3://${params.bucket}/${params.prefix}`, err)
   }
 }
 

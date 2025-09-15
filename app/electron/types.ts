@@ -25,6 +25,20 @@ export type ListObjectsResult = {
   nextToken?: string
 }
 
+// Folder stats (paged aggregation)
+export type FolderStatsPageParams = {
+  bucket: string
+  prefix: string
+  token?: string
+  maxKeys?: number
+}
+
+export type FolderStatsPageResult = {
+  objects: number
+  bytes: number
+  nextToken?: string
+}
+
 export type ProfileInfo = {
   name: string
   isSso?: boolean
@@ -136,6 +150,7 @@ export interface RendererAPI {
     init(params: S3InitParams): Promise<{ ok: true } | { ok: false; error: string }>
     listBuckets(): Promise<string[]>
     listObjects(params: ListObjectsParams): Promise<ListObjectsResult>
+  folderStatsPage(params: FolderStatsPageParams): Promise<FolderStatsPageResult>
     listProfiles(): Promise<ProfileInfo[]>
     setAwsFiles(params: { credentialsFile?: string; configFile?: string }): Promise<{ ok: true }>
     createBucket(params: CreateBucketParams): Promise<{ ok: true } | { ok: false; error: string }>
@@ -173,6 +188,7 @@ export const IpcChannels = {
   S3_INIT: 's3:init',
   S3_LIST_BUCKETS: 's3:listBuckets',
   S3_LIST_OBJECTS: 's3:listObjects',
+  S3_FOLDER_STATS_PAGE: 's3:folderStatsPage',
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
   S3_CREATE_BUCKET: 's3:createBucket',

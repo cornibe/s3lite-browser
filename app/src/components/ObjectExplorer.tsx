@@ -124,6 +124,10 @@ export default function ObjectExplorer() {
     title: string
     message: string
   } | null>(null)
+  // UI: filter and sorting state
+  const [objectFilter, setObjectFilter] = useState('')
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'lastModified'>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   // Reset prefix and selection when profile or bucket changes or when disconnected
   // This prevents stale buckets/objects from previous profile remaining visible
@@ -177,6 +181,46 @@ export default function ObjectExplorer() {
     return entries
   }, [data])
 
+  // Helpers for filter/sort
+  const getName = (it: Entry) =>
+    it.type === 'folder'
+      ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/'
+      : it.data.key.split('/').slice(-1)[0]
+
+  const filteredItems: Entry[] = useMemo(() => {
+    const q = objectFilter.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((it) => getName(it).toLowerCase().includes(q))
+  }, [items, objectFilter])
+
+  const visibleItems: Entry[] = useMemo(() => {
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
+    const dirMul = sortDir === 'asc' ? 1 : -1
+
+    const folders = filteredItems.filter((it) => it.type === 'folder')
+    const objects = filteredItems.filter((it) => it.type === 'object') as { type: 'object'; data: S3ObjectItem }[]
+
+    // Folders are always listed before files; when sorting by size/date, sort folders by name
+    folders.sort((a, b) => collator.compare(getName(a), getName(b)) * dirMul)
+
+    objects.sort((a, b) => {
+      if (sortBy === 'name') {
+        return collator.compare(getName(a), getName(b)) * dirMul
+      }
+      if (sortBy === 'size') {
+        const av = a.data.size ?? 0
+        const bv = b.data.size ?? 0
+        return (av === bv ? collator.compare(getName(a), getName(b)) : av - bv) * dirMul
+      }
+      // lastModified
+      const at = a.data.lastModified ? new Date(a.data.lastModified as any).getTime() : 0
+      const bt = b.data.lastModified ? new Date(b.data.lastModified as any).getTime() : 0
+      return (at === bt ? collator.compare(getName(a), getName(b)) : at - bt) * dirMul
+    })
+
+    return [...folders, ...objects]
+  }, [filteredItems, sortBy, sortDir])
+
   // Show a short, centered overlay while refetching to provide visual feedback
   const [showRefreshOverlay, setShowRefreshOverlay] = useState(false)
   const refreshStartRef = useRef<number | null>(null)
@@ -201,20 +245,20 @@ export default function ObjectExplorer() {
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (!items.length) return
-    const idx = items.findIndex(it => it.type === 'object' ? it.data.key === selectedKey : it.data.prefix === selectedKey)
+    if (!visibleItems.length) return
+    const idx = visibleItems.findIndex(it => it.type === 'object' ? it.data.key === selectedKey : it.data.prefix === selectedKey)
     if (e.key === 'ArrowDown') {
-      const next = Math.min((idx < 0 ? 0 : idx + 1), items.length - 1)
-      const it = items[next]
+      const next = Math.min((idx < 0 ? 0 : idx + 1), visibleItems.length - 1)
+      const it = visibleItems[next]
       setSelectedKey(it.type === 'object' ? it.data.key : it.data.prefix)
       e.preventDefault()
     } else if (e.key === 'ArrowUp') {
       const prev = Math.max((idx < 0 ? 0 : idx - 1), 0)
-      const it = items[prev]
+      const it = visibleItems[prev]
       setSelectedKey(it.type === 'object' ? it.data.key : it.data.prefix)
       e.preventDefault()
     } else if (e.key === 'Enter') {
-      const it = items[Math.max(idx, 0)]
+      const it = visibleItems[Math.max(idx, 0)]
       if (it && it.type === 'folder') { trace('ui', 'kb open folder', { prefix: it.data.prefix }); setPrefix(it.data.prefix) }
     }
   }
@@ -390,6 +434,11 @@ export default function ObjectExplorer() {
 
   const crumbs = splitPrefix(prefix)
   const parentPrefix = prefix.split('/').slice(0, -2).join('/') + (prefix ? '/' : '')
+  const toggleSort = (field: 'name' | 'size' | 'lastModified') => {
+    if (sortBy === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(field); setSortDir('asc') }
+  }
+  const sortIndicator = (field: 'name' | 'size' | 'lastModified') => sortBy === field ? (sortDir === 'asc' ? '▲' : '▼') : ''
 
   if (!connected) {
     return (
@@ -419,6 +468,23 @@ export default function ObjectExplorer() {
           ))}
         </div>
   <div className="ml-auto flex items-center gap-2">
+          {/* Filter input */}
+          <div className="relative">
+            <input
+              type="text"
+              value={objectFilter}
+              onChange={(e) => setObjectFilter(e.target.value)}
+              placeholder="Filter objects…"
+              className="h-7 w-56 px-2 pr-6 rounded border border-neutral-300 dark:border-[#323233] bg-white dark:bg-[#1e1e1e] text-sm"
+            />
+            {objectFilter && (
+              <button
+                onClick={() => setObjectFilter('')}
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                aria-label="Clear filter"
+              >×</button>
+            )}
+          </div>
           {bucket && (
             <>
               <button
@@ -503,9 +569,21 @@ export default function ObjectExplorer() {
           <table className="min-w-full text-sm bg-white dark:bg-[#1e1e1e] text-black dark:text-[#cccccc]">
             <thead className="sticky top-0 bg-[#f3f3f3] dark:bg-[#252526] border-b border-neutral-200 dark:border-[#323233] text-black dark:text-[#cccccc]">
               <tr className="text-left">
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 w-32 font-medium">Size</th>
-                <th className="px-3 py-2 w-48 font-medium">Last Modified</th>
+                <th className="px-3 py-2 font-medium">
+                  <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('name')}>
+                    Name <span className="opacity-70">{sortIndicator('name')}</span>
+                  </button>
+                </th>
+                <th className="px-3 py-2 w-32 font-medium">
+                  <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('size')}>
+                    Size <span className="opacity-70">{sortIndicator('size')}</span>
+                  </button>
+                </th>
+                <th className="px-3 py-2 w-48 font-medium">
+                  <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('lastModified')}>
+                    Last Modified <span className="opacity-70">{sortIndicator('lastModified')}</span>
+                  </button>
+                </th>
                 <th className="px-3 py-2 w-48 font-medium">Storage Class</th>
               </tr>
             </thead>
@@ -516,7 +594,7 @@ export default function ObjectExplorer() {
                 setSelected(undefined, undefined)
               }
             }}>
-              {items.map((it, i) => {
+              {visibleItems.map((it, i) => {
                 const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
@@ -574,9 +652,7 @@ export default function ObjectExplorer() {
               <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded cursor-pointer" onClick={() => setShowProps(null)}>Close</button>
             </div>
             {showProps.type === 'folder' ? (
-              <div className="space-y-2 text-sm">
-                <div><span className="opacity-70">Prefix:</span> <span className="font-mono break-all">{showProps.data.prefix}</span></div>
-              </div>
+              <FolderPropsPanel prefix={showProps.data.prefix} />
             ) : (
               <div className="space-y-2 text-sm">
                 <div><span className="opacity-70">Key:</span> <span className="font-mono break-all">{showProps.data.key}</span></div>
@@ -609,17 +685,153 @@ export default function ObjectExplorer() {
   )
 }
 
+function FolderPropsPanel({ prefix }: { prefix: string }) {
+  const { bucket } = useStore() as any
+  const [scanToken, setScanToken] = useState<string | undefined>(undefined)
+  const [totalObjects, setTotalObjects] = useState(0)
+  const [totalBytes, setTotalBytes] = useState(0)
+  const [isScanning, setIsScanning] = useState(false)
+  const [isAborted, setIsAborted] = useState(false)
+  const [error, setError] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    // reset on prefix change
+    setScanToken(undefined)
+    setTotalObjects(0)
+    setTotalBytes(0)
+    setIsScanning(false)
+    setIsAborted(false)
+    setError(undefined)
+  }, [prefix, bucket])
+
+  async function scanNextPage() {
+    if (!bucket || isScanning || isAborted) return
+    setIsScanning(true)
+    setError(undefined)
+    try {
+      // If user clicks after finishing (no token) and some totals exist, treat as fresh rescan
+      const tokenToUse = scanToken
+      if (tokenToUse === undefined && (totalObjects > 0 || totalBytes > 0)) {
+        setTotalObjects(0)
+        setTotalBytes(0)
+      }
+      const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix, token: tokenToUse })
+      setTotalObjects(prev => prev + (res.objects || 0))
+      setTotalBytes(prev => prev + (res.bytes || 0))
+      setScanToken(res.nextToken)
+    } catch (e) {
+      setError((e as Error)?.message || 'Failed to scan folder')
+    } finally {
+      setIsScanning(false)
+    }
+  }
+
+  function abortScan() {
+    setIsAborted(true)
+    setIsScanning(false)
+  }
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div><span className="opacity-70">Prefix:</span> <span className="font-mono break-all">{prefix}</span></div>
+      <div className="flex flex-wrap items-center gap-4">
+        <div><span className="opacity-70">Objects (scanned):</span> {totalObjects.toLocaleString()}</div>
+        <div><span className="opacity-70">Size (scanned):</span> {formatSize(totalBytes)}</div>
+        {error && <div className="text-red-600 dark:text-red-400">{error}</div>}
+        <div className="ml-auto flex items-center gap-2">
+          {!isAborted && (
+            <button disabled={isScanning} onClick={scanNextPage} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] disabled:opacity-50 cursor-pointer">
+              {scanToken === undefined && totalObjects === 0 ? (isScanning ? 'Scanning…' : 'Scan folder') : (isScanning ? 'Loading…' : (scanToken ? 'Load next page' : 'Rescan'))}
+            </button>
+          )}
+          {!isAborted && (scanToken || isScanning) && (
+            <button onClick={abortScan} className="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/30 cursor-pointer">Abort</button>
+          )}
+          {isAborted && (
+            <>
+              <span className="opacity-70">Aborted</span>
+              <button onClick={() => { setIsAborted(false); setError(undefined) }} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">Resume</button>
+            </>
+          )}
+        </div>
+      </div>
+      {(!isAborted && scanToken !== undefined) && (
+        <div className="opacity-70">More pages available… use "Load next page" to continue. Large folders can be scanned incrementally and aborted anytime.</div>
+      )}
+    </div>
+  )
+}
+
 function Details({ items, selectedKey }: { items: Entry[]; selectedKey?: string }) {
-  const { bucket } = useStore()
+  const { bucket } = useStore() as any
   const sel = useMemo(() => items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey), [items, selectedKey])
+  const [scanToken, setScanToken] = useState<string | undefined>(undefined)
+  const [totalObjects, setTotalObjects] = useState(0)
+  const [totalBytes, setTotalBytes] = useState(0)
+  const [isScanning, setIsScanning] = useState(false)
+  const [isAborted, setIsAborted] = useState(false)
+  const [error, setError] = useState<string | undefined>(undefined)
+
+  // Reset state whenever selection changes
+  useEffect(() => {
+    setScanToken(undefined)
+    setTotalObjects(0)
+    setTotalBytes(0)
+    setIsScanning(false)
+    setIsAborted(false)
+    setError(undefined)
+  }, [selectedKey, bucket])
+
   if (!sel) return <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm opacity-70 bg-white dark:bg-[#252526]">Select an object or folder to see details.</div>
   if (sel.type === 'folder') {
     const name = sel.data.prefix
-    const pageCount = items.length
+
+    async function scanNextPage() {
+      if (!bucket) return
+      if (isScanning) return
+      setIsScanning(true)
+      setError(undefined)
+      try {
+        const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix: name, token: scanToken })
+        setTotalObjects(prev => prev + (res.objects || 0))
+        setTotalBytes(prev => prev + (res.bytes || 0))
+        setScanToken(res.nextToken)
+      } catch (e) {
+        setError((e as Error)?.message || 'Failed to scan folder')
+      } finally {
+        setIsScanning(false)
+      }
+    }
+
+  function abortScan() { setIsAborted(true); setIsScanning(false) }
+
     return (
-      <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm flex flex-wrap gap-6 bg-white dark:bg-[#252526]">
-        <div><span className="opacity-70">Prefix:</span> <span className="font-mono">{name}</span></div>
-        <div className="opacity-70">Showing {pageCount} items on this page.</div>
+      <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm flex flex-wrap items-center gap-4 bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]">
+        <div className="min-w-0"><span className="opacity-70">Prefix:</span> <span className="font-mono break-all">{name}</span></div>
+        <div><span className="opacity-70">Objects (scanned):</span> {totalObjects.toLocaleString()}</div>
+        <div><span className="opacity-70">Size (scanned):</span> {formatSize(totalBytes)}</div>
+        {error && <div className="text-red-600 dark:text-red-400">{error}</div>}
+        <div className="ml-auto flex items-center gap-2">
+          {!isAborted && scanToken !== undefined && (
+            <span className="opacity-70">More pages available</span>
+          )}
+          {!isAborted && (
+            <button disabled={isScanning} onClick={scanNextPage} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] disabled:opacity-50 cursor-pointer">
+              {scanToken === undefined && totalObjects === 0 ? (isScanning ? 'Scanning…' : 'Scan folder') : (isScanning ? 'Loading…' : (scanToken ? 'Load next page' : 'Rescan'))}
+            </button>
+          )}
+          {!isAborted && (scanToken || isScanning) && (
+            <button onClick={abortScan} className="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/30 cursor-pointer">
+              Abort
+            </button>
+          )}
+          {isAborted && (
+            <>
+              <span className="opacity-70">Aborted</span>
+              <button onClick={() => { setIsAborted(false); setError(undefined) }} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">Resume</button>
+            </>
+          )}
+        </div>
       </div>
     )
   }

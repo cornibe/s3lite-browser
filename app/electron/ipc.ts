@@ -41,6 +41,18 @@ export function registerIpc() {
       throw e
     }
   })
+  ipcMain.handle(IpcChannels.S3_FOLDER_STATS_PAGE, async (_e, params) => {
+    const t = Date.now()
+    try {
+      const out = await s3.folderStatsPage(params)
+      getLogger().debug('ipc', 's3:folderStatsPage ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, objects: out.objects, bytes: out.bytes, truncated: Boolean(out.nextToken) })
+      return out
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to scan folder'
+      getLogger().warn('ipc', 's3:folderStatsPage error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
+      throw e
+    }
+  })
   ipcMain.handle(IpcChannels.S3_LIST_PROFILES, async () => {
     const t = Date.now()
     try {

@@ -8,6 +8,7 @@ export default function SidebarBuckets() {
   const { bucket, profile, connected, selectBucket, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings } = useStore() as any
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
   const [showCreateBucket, setShowCreateBucket] = useState(false)
+  const [bucketFilter, setBucketFilter] = useState('')
 
   // If listing buckets fails (for example missing region or invalid creds),
   // surface that as a connectionError and clear any selected bucket/prefix so
@@ -44,17 +45,26 @@ export default function SidebarBuckets() {
   const dark = Boolean(settings?.darkMode)
   return (
     <div className={`w-64 overflow-y-auto border-r flex-shrink-0 ${dark ? 'bg-[#252526] border-[#323233] text-[#cccccc]' : 'bg-white border-neutral-200'}`}>
-      <div className={`flex items-center justify-between px-3 py-2 border-b ${dark ? 'border-[#323233]' : 'border-neutral-200'}`}>
-        <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
-        {connected && !isSwitchingProfile && (
-          <button
-            onClick={() => setShowCreateBucket(true)}
-            className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] transition-colors"
-            title="Create new bucket"
-          >
-            + New
-          </button>
-        )}
+      <div className={`px-3 py-2 border-b ${dark ? 'border-[#323233]' : 'border-neutral-200'}`}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
+          {connected && !isSwitchingProfile && (
+            <button
+              onClick={() => setShowCreateBucket(true)}
+              className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] transition-colors"
+              title="Create new bucket"
+            >
+              + New
+            </button>
+          )}
+        </div>
+        <input
+          type="text"
+          value={bucketFilter}
+          onChange={(e) => setBucketFilter(e.target.value)}
+          placeholder="Filter buckets…"
+          className={`w-full h-8 px-2 rounded border text-sm ${dark ? 'bg-[#1e1e1e] border-[#323233] text-[#cccccc]' : 'bg-white border-neutral-300 text-black'}`}
+        />
       </div>
       {!connected && (
         <div className="px-3 py-2 text-sm opacity-80">
@@ -67,7 +77,9 @@ export default function SidebarBuckets() {
       {(!isSwitchingProfile && connected && !isError) && (
         (data && data.length > 0) ? (
           <ul className={`text-sm ${dark ? 'bg-[#252526]' : 'bg-white'}`}>
-            {data.map(name => {
+            {data
+              .filter(name => name.toLowerCase().includes(bucketFilter.trim().toLowerCase()))
+              .map(name => {
               const isActive = bucket === name
               const hover = !isActive ? (dark ? 'hover:bg-[#2a2d2e]' : 'hover:bg-blue-50') : (dark ? 'hover:bg-[#094771]' : 'hover:bg-[#094771]')
               return (
