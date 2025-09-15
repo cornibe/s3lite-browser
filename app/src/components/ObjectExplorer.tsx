@@ -114,7 +114,7 @@ function FileIcon({ fileName, className = "w-4 h-4" }: { fileName: string; class
 
 export default function ObjectExplorer() {
   const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, isSwitchingProfile, connectionError, openSettings } = useStore() as any
-  const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
+  const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
   const [showProps, setShowProps] = useState<{ type: 'object' | 'folder'; data: any } | null>(null)
@@ -386,6 +386,25 @@ export default function ObjectExplorer() {
     )
   }
 
+  // Show a short, centered overlay while refetching to provide visual feedback
+  const [showRefreshOverlay, setShowRefreshOverlay] = useState(false)
+  const refreshStartRef = useRef<number | null>(null)
+  useEffect(() => {
+    const active = Boolean(bucket) && !isFetchingNextPage && isFetching && !isLoading && !connectionError
+    if (active) {
+      if (!showRefreshOverlay) {
+        refreshStartRef.current = Date.now()
+        setShowRefreshOverlay(true)
+      }
+    } else if (showRefreshOverlay) {
+      const elapsed = (Date.now() - (refreshStartRef.current || Date.now()))
+      const minMs = 500
+      const delay = Math.max(0, minMs - elapsed)
+      const t = setTimeout(() => setShowRefreshOverlay(false), delay)
+      return () => clearTimeout(t)
+    }
+  }, [bucket, isFetching, isFetchingNextPage, isLoading, connectionError, showRefreshOverlay])
+
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e]" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
       <div className="border-b border-neutral-200 dark:border-[#323233] px-3 py-2 flex items-center gap-2 text-sm bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]">
@@ -439,13 +458,22 @@ export default function ObjectExplorer() {
       </div>
 
   {/* Main content area */}
-  <div className="flex-1 overflow-auto bg-white dark:bg-[#1e1e1e]" onClick={(e) => {
+  <div className="relative flex-1 overflow-auto bg-white dark:bg-[#1e1e1e]" onClick={(e) => {
         // Only deselect if clicking directly on the container, not on any child elements
         if (e.target === e.currentTarget) {
           trace('ui', 'deselect on background click')
           setSelected(undefined, undefined)
         }
       }}>
+        {showRefreshOverlay && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-black/40 pointer-events-none">
+            <svg className="h-8 w-8 animate-spin text-[#0e639c] dark:text-[#3794ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+              <circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
+              <path d="M21 12a9 9 0 0 0-9-9" strokeWidth="3" />
+            </svg>
+            <span className="sr-only">Refreshing</span>
+          </div>
+        )}
         {connectionError && (
           <div className="h-full w-full flex items-center justify-center p-6">
             <div className="max-w-2xl text-center">
