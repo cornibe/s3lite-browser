@@ -177,6 +177,25 @@ export default function ObjectExplorer() {
     return entries
   }, [data])
 
+  // Show a short, centered overlay while refetching to provide visual feedback
+  const [showRefreshOverlay, setShowRefreshOverlay] = useState(false)
+  const refreshStartRef = useRef<number | null>(null)
+  useEffect(() => {
+    const active = Boolean(bucket) && !isFetchingNextPage && isFetching && !isLoading && !connectionError
+    if (active) {
+      if (!showRefreshOverlay) {
+        refreshStartRef.current = Date.now()
+        setShowRefreshOverlay(true)
+      }
+    } else if (showRefreshOverlay) {
+      const elapsed = (Date.now() - (refreshStartRef.current || Date.now()))
+      const minMs = 500
+      const delay = Math.max(0, minMs - elapsed)
+      const t = setTimeout(() => setShowRefreshOverlay(false), delay)
+      return () => clearTimeout(t)
+    }
+  }, [bucket, isFetching, isFetchingNextPage, isLoading, connectionError, showRefreshOverlay])
+
   function onDoubleClick(item: Entry) {
     if (item.type === 'folder') { trace('ui', 'open folder', { prefix: item.data.prefix }); setPrefix(item.data.prefix) }
   }
@@ -385,25 +404,6 @@ export default function ObjectExplorer() {
       </div>
     )
   }
-
-  // Show a short, centered overlay while refetching to provide visual feedback
-  const [showRefreshOverlay, setShowRefreshOverlay] = useState(false)
-  const refreshStartRef = useRef<number | null>(null)
-  useEffect(() => {
-    const active = Boolean(bucket) && !isFetchingNextPage && isFetching && !isLoading && !connectionError
-    if (active) {
-      if (!showRefreshOverlay) {
-        refreshStartRef.current = Date.now()
-        setShowRefreshOverlay(true)
-      }
-    } else if (showRefreshOverlay) {
-      const elapsed = (Date.now() - (refreshStartRef.current || Date.now()))
-      const minMs = 500
-      const delay = Math.max(0, minMs - elapsed)
-      const t = setTimeout(() => setShowRefreshOverlay(false), delay)
-      return () => clearTimeout(t)
-    }
-  }, [bucket, isFetching, isFetchingNextPage, isLoading, connectionError, showRefreshOverlay])
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e]" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
