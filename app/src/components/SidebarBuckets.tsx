@@ -5,7 +5,7 @@ import { trace, warn } from '../lib/log'
 import CreateBucketModal from './CreateBucketModal'
 
 export default function SidebarBuckets() {
-  const { bucket, profile, connected, selectBucket, connectionError, setConnectionError, setConnected, isSwitchingProfile } = useStore() as any
+  const { bucket, profile, connected, selectBucket, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings } = useStore() as any
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
   const [showCreateBucket, setShowCreateBucket] = useState(false)
 
@@ -41,9 +41,10 @@ export default function SidebarBuckets() {
     selectBucket(bucketName)
   }
 
+  const dark = Boolean(settings?.darkMode)
   return (
-    <div className="w-64 border-r border-neutral-200 dark:border-[#323233] bg-white dark:bg-[#252526] overflow-auto">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200 dark:border-[#323233]">
+    <div className={`w-64 overflow-auto border-r ${dark ? 'bg-[#252526] border-[#323233] text-[#cccccc]' : 'bg-white border-neutral-200'}`}>
+      <div className={`flex items-center justify-between px-3 py-2 border-b ${dark ? 'border-[#323233]' : 'border-neutral-200'}`}>
         <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
         {connected && !isSwitchingProfile && (
           <button
@@ -81,14 +82,21 @@ export default function SidebarBuckets() {
       )}
       {(!isSwitchingProfile && connected && !isError) && (
         (data && data.length > 0) ? (
-          <ul className="text-sm bg-white dark:bg-[#252526]">
-            {data.map(name => (
-              <li key={name}>
-                <button onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }} className={`w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-[#2a2d2e] ${bucket === name ? 'bg-[#094771] dark:bg-[#094771] text-white font-medium' : 'bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]'}`}>
-                  {name}
-                </button>
-              </li>
-            ))}
+          <ul className={`text-sm ${dark ? 'bg-[#252526]' : 'bg-white'}`}>
+            {data.map(name => {
+              const isActive = bucket === name
+              const hover = !isActive ? (dark ? 'hover:bg-[#2a2d2e]' : 'hover:bg-blue-50') : (dark ? 'hover:bg-[#094771]' : 'hover:bg-[#094771]')
+              return (
+                <li key={name}>
+                  <button
+                    onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }}
+                    className={`w-full text-left px-3 py-2 ${hover} ${dark ? 'text-[#cccccc]' : 'text-black'} ${isActive ? 'bg-[#094771] text-white font-medium' : (dark ? 'bg-[#252526]' : 'bg-white')}`}
+                  >
+                    {name}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         ) : (
           <div className="px-3 py-2 text-sm opacity-70">No buckets found.</div>

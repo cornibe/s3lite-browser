@@ -174,8 +174,9 @@ export default function TransferQueue() {
     setTransfers({ jobs: newJobs, items: newItems })
   }
 
+  const dark = Boolean(useStore.getState().settings?.darkMode)
   return (
-    <div className="p-2 border-t border-neutral-200 dark:border-[#323233] text-sm bg-neutral-50 dark:bg-[#252526]">
+    <div className={`p-2 border-t text-sm ${dark ? 'border-[#323233] bg-[#252526] text-[#cccccc]' : 'border-neutral-200 bg-neutral-50'}`}>
       <div className="font-semibold mb-2">Transfer Queue</div>
       {jobs.length === 0 && <div className="opacity-60">No active transfers.</div>}
       {jobs.map(job => {

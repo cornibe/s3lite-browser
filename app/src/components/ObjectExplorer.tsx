@@ -382,7 +382,7 @@ export default function ObjectExplorer() {
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e]" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
-      <div className="border-b border-neutral-200 dark:border-[#323233] px-3 py-2 flex items-center gap-2 text-sm bg-white dark:bg-[#252526]">
+      <div className="border-b border-neutral-200 dark:border-[#323233] px-3 py-2 flex items-center gap-2 text-sm bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]">
         <div className="opacity-70">{bucket ? `${bucket}` : 'No bucket selected'}</div>
         <div className="ml-2">/</div>
         <div className="flex items-center gap-1 flex-wrap">
@@ -393,7 +393,7 @@ export default function ObjectExplorer() {
             </div>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+  <div className="ml-auto flex items-center gap-2">
           {bucket && (
             <>
               <button
@@ -437,7 +437,7 @@ export default function ObjectExplorer() {
         <div className="border-b border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm text-red-600 dark:text-red-400">{connectionError}</div>
       )}
 
-      <div className="flex-1 overflow-auto bg-white dark:bg-[#1e1e1e]" onClick={(e) => {
+  <div className="flex-1 overflow-auto bg-white dark:bg-[#1e1e1e]" onClick={(e) => {
         // Only deselect if clicking directly on the container, not on any child elements
         if (e.target === e.currentTarget) {
           trace('ui', 'deselect on background click')
@@ -455,8 +455,8 @@ export default function ObjectExplorer() {
   {/* query-specific errors are shown below; connectionError is also surfaced above */}
         {/* Only render the objects table when there's no error and a bucket is selected */}
   {!isSwitchingProfile && !isError && bucket && (
-          <table className="min-w-full text-sm bg-white dark:bg-[#1e1e1e]">
-            <thead className="sticky top-0 bg-neutral-50 dark:bg-[#252526] border-b border-neutral-200 dark:border-[#323233]">
+          <table className="min-w-full text-sm bg-white dark:bg-[#1e1e1e] text-black dark:text-[#cccccc]">
+            <thead className="sticky top-0 bg-[#f3f3f3] dark:bg-[#252526] border-b border-neutral-200 dark:border-[#323233] text-black dark:text-[#cccccc]">
               <tr className="text-left">
                 <th className="px-3 py-2 font-medium">Name</th>
                 <th className="px-3 py-2 w-32 font-medium">Size</th>
@@ -582,7 +582,7 @@ function Details({ items, selectedKey }: { items: Entry[]; selectedKey?: string 
   const filename = o.key.split('/').slice(-1)[0]
   const s3uri = bucket ? `s3://${bucket}/${o.key}` : o.key
   return (
-    <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm grid grid-cols-2 gap-3 bg-white dark:bg-[#252526]">
+  <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm grid grid-cols-2 gap-3 bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]">
       <div><span className="opacity-70">Key:</span> <span className="font-mono break-all">{o.key}</span></div>
       <div><span className="opacity-70">File name:</span> {filename}</div>
       <div><span className="opacity-70">Size:</span> {formatSize(o.size)}</div>
