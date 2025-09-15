@@ -75,6 +75,14 @@ function sanitizeWindows(name: string) {
   return name.replace(reserved, '_')
 }
 
+// Sanitize a relative path while preserving its directory structure.
+// Each segment is cleaned for Windows-invalid characters, but path separators are kept.
+function sanitizeRelativePathPreserveDirs(relPath: string) {
+  const parts = relPath.replace(/\\/g, '/').split('/').filter(Boolean)
+  const cleaned = parts.map(seg => sanitizeWindows(seg))
+  return cleaned.join(path.sep)
+}
+
 function safeJoin(base: string, rel: string) {
   const norm = rel.replace(/\\/g, '/').split('/').filter(p => p && p !== '.' && p !== '..').join(path.sep)
   return path.join(base, norm)
@@ -275,6 +283,12 @@ export async function startPrefix(win: BrowserWindow | null, params: StartPrefix
   job.totalBytes = keys.reduce((a, b) => a + (b.size || 0), 0)
   emit(win, { type: 'job-state', job })
 
+  // Determine a root container folder under the destination named after the source prefix (e.g., "test1")
+  const rawRootName = params.prefix.replace(/\/+$/, '').split('/').filter(Boolean).pop() || ''
+  const rootName = process.platform === 'win32' ? sanitizeWindows(rawRootName) : rawRootName
+  const baseDestDir = rootName ? path.join(params.destDir, rootName) : params.destDir
+  try { await ensureDir(baseDestDir) } catch {}
+
   let active = 0
   let idx = 0
   const next = async (): Promise<void> => {
@@ -282,12 +296,14 @@ export async function startPrefix(win: BrowserWindow | null, params: StartPrefix
     while (active >= settings.objectConcurrency) await new Promise(r => setTimeout(r, 25))
     const k = keys[idx++]
     active++
-    const baseName = k.key.slice(params.prefix.length).replace(/^\//, '')
-    const safeName = process.platform === 'win32' ? sanitizeWindows(baseName) : baseName
+    const baseRel = k.key.slice(params.prefix.length).replace(/^\//, '')
+    // Preserve subfolder paths under the chosen destination directory
+    const safeRel = process.platform === 'win32' ? sanitizeRelativePathPreserveDirs(baseRel) : baseRel
     const chosen = settings.overwritePolicy === 'prompt'
-      ? await promptOnConflict(win, params.destDir, safeName)
-      : await chooseDestPath(params.destDir, safeName, settings.overwritePolicy, win || undefined)
-    const destPath = safeJoin(params.destDir, path.basename(chosen.path))
+      ? await promptOnConflict(win, baseDestDir, safeRel)
+      : await chooseDestPath(baseDestDir, safeRel, settings.overwritePolicy, win || undefined)
+    // Use the exact chosen path so Rename/Skip decisions apply correctly
+    const destPath = chosen.path
     await ensureDir(path.dirname(destPath))
     const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key: k.key, size: k.size, etag: k.etag, destPath, status: 'queued', bytesTransferred: 0 }
     items.set(it.id, it)
