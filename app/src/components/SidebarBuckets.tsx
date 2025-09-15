@@ -42,13 +42,13 @@ export default function SidebarBuckets() {
   }
 
   return (
-    <div className="w-64 border-r overflow-auto">
-      <div className="flex items-center justify-between px-3 py-2">
+    <div className="w-64 border-r border-neutral-200 dark:border-[#323233] bg-white dark:bg-[#252526] overflow-auto">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200 dark:border-[#323233]">
         <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
         {connected && !isSwitchingProfile && (
           <button
             onClick={() => setShowCreateBucket(true)}
-            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] transition-colors"
             title="Create new bucket"
           >
             + New
@@ -81,10 +81,10 @@ export default function SidebarBuckets() {
       )}
       {(!isSwitchingProfile && connected && !isError) && (
         (data && data.length > 0) ? (
-          <ul className="text-sm">
+          <ul className="text-sm bg-white dark:bg-[#252526]">
             {data.map(name => (
               <li key={name}>
-                <button onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }} className={`w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-neutral-800 ${bucket === name ? 'bg-blue-100 dark:bg-neutral-800 font-medium' : ''}`}>
+                <button onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }} className={`w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-[#2a2d2e] ${bucket === name ? 'bg-[#094771] dark:bg-[#094771] text-white font-medium' : 'bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]'}`}>
                   {name}
                 </button>
               </li>

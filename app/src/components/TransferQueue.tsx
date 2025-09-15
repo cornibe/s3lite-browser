@@ -36,8 +36,8 @@ function useThrottledListener(handler: (evt: TransferEvent) => void, fps = 15) {
 function ProgressBar({ percent }: { percent: number }) {
   const pct = Math.round(clamp01(percent) * 100)
   return (
-    <div className="w-full h-2 bg-neutral-200 dark:bg-neutral-800 rounded" aria-hidden>
-      <div className="h-2 bg-blue-500 rounded" style={{ width: `${pct}%` }} />
+    <div className="w-full h-2 bg-neutral-200 dark:bg-[#323233] rounded" aria-hidden>
+      <div className="h-2 bg-[#0e639c] rounded" style={{ width: `${pct}%` }} />
     </div>
   )
 }
@@ -79,15 +79,15 @@ function ActionButtons({ job, onRemove }: { job: TransferJobType; onRemove: () =
   if (isTerminal) {
     return (
       <div className="flex justify-end">
-  <button aria-label="Remove job" className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={onRemove}>Remove</button>
+  <button aria-label="Remove job" className="px-2 py-1 text-xs bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={onRemove}>Remove</button>
       </div>
     )
   }
   return (
     <div className="flex gap-1 justify-end">
-      <button aria-label="Pause job" disabled={!canPause} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'pause' })}>Pause</button>
-      <button aria-label="Resume job" disabled={!canResume} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'resume' })}>Resume</button>
-      <button aria-label="Cancel job" disabled={!canCancel} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-neutral-800 rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'cancel' })}>Cancel</button>
+      <button aria-label="Pause job" disabled={!canPause} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'pause' })}>Pause</button>
+      <button aria-label="Resume job" disabled={!canResume} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'resume' })}>Resume</button>
+      <button aria-label="Cancel job" disabled={!canCancel} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'cancel' })}>Cancel</button>
     </div>
   )
 }
@@ -175,7 +175,7 @@ export default function TransferQueue() {
   }
 
   return (
-    <div className="p-2 border-t text-sm bg-neutral-50 dark:bg-neutral-900">
+    <div className="p-2 border-t border-neutral-200 dark:border-[#323233] text-sm bg-neutral-50 dark:bg-[#252526]">
       <div className="font-semibold mb-2">Transfer Queue</div>
       {jobs.length === 0 && <div className="opacity-60">No active transfers.</div>}
       {jobs.map(job => {
@@ -208,7 +208,7 @@ export default function TransferQueue() {
           )
         }
         return (
-          <div key={job.id} className={`mb-3 rounded ${job.status === 'failed' ? 'bg-red-500/5' : ''}`}>
+          <div key={job.id} className={`mb-3 rounded ${job.status === 'failed' ? 'bg-red-500/10 dark:bg-red-900/20' : ''}`}>
             <div role="row" className="grid grid-cols-[minmax(10rem,1fr)_12rem_14rem_8rem_8rem_10rem] items-center gap-3 py-1">
               <div role="cell" className="truncate" title={title}>
                 {job.type === 'prefix' && job.prefix && job.prefix !== '' ? `Folder: ${title}` : title}
@@ -224,7 +224,7 @@ export default function TransferQueue() {
               <div role="cell" className="capitalize text-xs text-right">{job.status}</div>
               <div role="cell"><ActionButtons job={job} onRemove={() => clearJob(job.id)} /></div>
             </div>
-            <div className="mt-1 divide-y divide-neutral-200/30">
+            <div className="mt-1 divide-y divide-neutral-200 dark:divide-[#323233]/50">
               {jobItems.map(it => (
                 <TransferItem key={it.id} item={it} job={job} />
               ))}

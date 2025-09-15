@@ -18,6 +18,7 @@ type State = {
     partConcurrency?: number
     partSizeMiB?: number
     multipartThresholdMiB?: number
+    darkMode?: boolean
   }
   transfers: {
     jobs: Record<string, import('../../electron/types').TransferJob>
@@ -56,10 +57,11 @@ function loadSettings(): State['settings'] {
         partConcurrency: parsed.partConcurrency,
         partSizeMiB: parsed.partSizeMiB,
         multipartThresholdMiB: parsed.multipartThresholdMiB,
+        darkMode: Boolean(parsed.darkMode),
       }
     }
   } catch {}
-  return { overwritePolicy: 'prompt' }
+  return { overwritePolicy: 'prompt', darkMode: true }
 }
 
 function persistSettings(s: State['settings']) {

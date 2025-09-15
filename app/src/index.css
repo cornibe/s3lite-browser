@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Tailwind v4: make dark: respond to a .dark ancestor instead of OS media */
+@custom-variant dark (&:where(.dark, [data-theme="dark"]) &);
+
 @layer base {
   html, body, #root { height: 100%; }
+  /* Set base background/text colors for both themes */
+  body { background-color: #ffffff; color: #171717; }
+  html.dark body { background-color: #1e1e1e; color: #cccccc; }
 }
