@@ -30,7 +30,7 @@ export default function App() {
 
   return (
     <div className={settings.darkMode ? 'dark h-full' : 'h-full'}>
-      <div className="h-full min-h-[800px] min-w-[1200px] flex flex-col bg-white dark:bg-[#1e1e1e] text-black dark:text-[#cccccc]">
+      <div className="h-full flex flex-col overflow-hidden bg-white dark:bg-[#1e1e1e] text-black dark:text-[#cccccc]">
         <Topbar />
         <div className="flex flex-1 overflow-hidden">
           <SidebarBuckets />

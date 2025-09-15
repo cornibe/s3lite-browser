@@ -113,7 +113,7 @@ function FileIcon({ fileName, className = "w-4 h-4" }: { fileName: string; class
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, isSwitchingProfile, connectionError } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, isSwitchingProfile, connectionError, openSettings } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
@@ -374,8 +374,14 @@ export default function ObjectExplorer() {
 
   if (!connected) {
     return (
-      <div className="flex-1 flex flex-col">
-        <div className="border-b border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm opacity-80">Not connected. Select a profile to connect.</div>
+      <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#1e1e1e]">
+        <div className="text-center p-6">
+          <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-neutral-100 dark:bg-[#2a2d2e] flex items-center justify-center">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 opacity-70"><path d="M3 12h2a7 7 0 0 1 7-7V3A9 9 0 0 0 3 12zm2 0H3a9 9 0 0 0 9 9v-2a7 7 0 0 1-7-7zm16 0a9 9 0 0 0-9-9v2a7 7 0 0 1 7 7h2zm-2 0a7 7 0 0 1-7 7v2a9 9 0 0 0 9-9h-2z"/></svg>
+          </div>
+          <h2 className="text-lg font-semibold mb-2">Not connected</h2>
+          <p className="text-sm opacity-80">Select a profile from the top bar to connect.</p>
+        </div>
       </div>
     )
   }
@@ -432,11 +438,7 @@ export default function ObjectExplorer() {
         </div>
       </div>
 
-      {/* Connection error banner for visibility in main panel */}
-      {connectionError && (
-        <div className="border-b border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm text-red-600 dark:text-red-400">{connectionError}</div>
-      )}
-
+  {/* Main content area */}
   <div className="flex-1 overflow-auto bg-white dark:bg-[#1e1e1e]" onClick={(e) => {
         // Only deselect if clicking directly on the container, not on any child elements
         if (e.target === e.currentTarget) {
@@ -444,9 +446,24 @@ export default function ObjectExplorer() {
           setSelected(undefined, undefined)
         }
       }}>
-        {isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
-        {isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
-        {isError && (
+        {connectionError && (
+          <div className="h-full w-full flex items-center justify-center p-6">
+            <div className="max-w-2xl text-center">
+              <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400">
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6"><path d="M11 15h2v2h-2zm0-8h2v6h-2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+              </div>
+              <h2 className="text-lg font-semibold mb-2">Connection failed</h2>
+              <p className="text-sm opacity-80 mb-4">{connectionError}</p>
+              <div className="flex items-center justify-center gap-3">
+                <button className="px-3 py-1 text-sm rounded bg-[#0e639c] text-white hover:bg-[#1177bb] cursor-pointer" onClick={() => refetch()}>Retry</button>
+                <button className="px-3 py-1 text-sm rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer" onClick={() => openSettings()}>Settings</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {!connectionError && isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
+        {!connectionError && isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
+        {!connectionError && isError && (
           <div className="px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-3">
             <span>{(error as Error)?.message || 'Failed to load objects.'}</span>
             <button onClick={() => refetch()} className="underline cursor-pointer">Retry</button>
@@ -454,7 +471,7 @@ export default function ObjectExplorer() {
         )}
   {/* query-specific errors are shown below; connectionError is also surfaced above */}
         {/* Only render the objects table when there's no error and a bucket is selected */}
-  {!isSwitchingProfile && !isError && bucket && (
+  {!connectionError && !isSwitchingProfile && !isError && bucket && (
           <table className="min-w-full text-sm bg-white dark:bg-[#1e1e1e] text-black dark:text-[#cccccc]">
             <thead className="sticky top-0 bg-[#f3f3f3] dark:bg-[#252526] border-b border-neutral-200 dark:border-[#323233] text-black dark:text-[#cccccc]">
               <tr className="text-left">

@@ -43,7 +43,7 @@ export default function SidebarBuckets() {
 
   const dark = Boolean(settings?.darkMode)
   return (
-    <div className={`w-64 overflow-auto border-r ${dark ? 'bg-[#252526] border-[#323233] text-[#cccccc]' : 'bg-white border-neutral-200'}`}>
+    <div className={`w-64 overflow-y-auto border-r flex-shrink-0 ${dark ? 'bg-[#252526] border-[#323233] text-[#cccccc]' : 'bg-white border-neutral-200'}`}>
       <div className={`flex items-center justify-between px-3 py-2 border-b ${dark ? 'border-[#323233]' : 'border-neutral-200'}`}>
         <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
         {connected && !isSwitchingProfile && (
@@ -63,23 +63,7 @@ export default function SidebarBuckets() {
       )}
   {connected && isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
   {isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
-      {connectionError && (
-        <div className="px-3 py-2 text-sm text-red-600 flex items-center gap-3">
-          <span>{connectionError}</span>
-          <button onClick={async () => {
-            // try re-initializing the profile
-            try {
-              setConnectionError(undefined)
-              const res = await (window as any).api.s3.init({ profile })
-              if (!res?.ok) throw new Error(res?.error || 'Failed to connect')
-              setConnected(true)
-              void refetch()
-            } catch (e) {
-              setConnectionError((e as Error).message || 'Failed to connect')
-            }
-          }} className="underline">Retry</button>
-        </div>
-      )}
+  {/* Connection errors are displayed in the main panel to avoid clutter. */}
       {(!isSwitchingProfile && connected && !isError) && (
         (data && data.length > 0) ? (
           <ul className={`text-sm ${dark ? 'bg-[#252526]' : 'bg-white'}`}>

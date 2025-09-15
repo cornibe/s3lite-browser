@@ -9,6 +9,7 @@ export default function Topbar() {
   const [connecting, setConnecting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [status, setStatus] = useState('')
+  // Keep local error for status logic if needed, but do not render it in the UI
   const [error, setError] = useState('')
   const [profiles, setProfiles] = useState<{ name: string; isSso?: boolean }[]>([])
 
@@ -85,11 +86,7 @@ export default function Topbar() {
         </button>
       </div>
       <div className="w-72 text-xs text-right whitespace-nowrap">
-        {error ? (
-          <span className={dark ? 'text-red-400' : 'text-red-600'}>{error}</span>
-        ) : (
-          <span className="opacity-70">{connecting ? 'Connecting.€' : (status || (connected ? `Connected${profile ? ` .€ ${profile}` : ''}` : 'Not connected'))}</span>
-        )}
+        <span className="opacity-70">{connecting ? 'Connecting.€' : (status || (connected ? `Connected${profile ? ` .€ ${profile}` : ''}` : 'Not connected'))}</span>
       </div>
       <div className="pl-2">
         <button className={`px-2 py-1 text-sm rounded cursor-pointer ${dark ? 'bg-[#0e639c] hover:bg-[#1177bb] text-white' : 'bg-neutral-200 hover:bg-neutral-300 text-neutral-700'}`} onClick={openSettings}>
