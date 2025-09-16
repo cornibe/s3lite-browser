@@ -44,8 +44,8 @@ export default function SidebarBuckets() {
 
   const dark = Boolean(settings?.darkMode)
   return (
-    <div className={`h-full overflow-y-auto ${dark ? 'bg-[#252526] text-[#cccccc]' : 'bg-white'}`}>
-      <div className={`px-3 py-2 border-b ${dark ? 'border-[#323233]' : 'border-neutral-200'}`}>
+    <div className={`h-full overflow-y-auto bg-header text-app`}>
+      <div className={`px-3 py-2 border-b border-default`}>
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
           {connected && !isSwitchingProfile && (
@@ -63,7 +63,7 @@ export default function SidebarBuckets() {
           value={bucketFilter}
           onChange={(e) => setBucketFilter(e.target.value)}
           placeholder="Filter buckets…"
-          className={`w-full h-8 px-2 rounded border text-sm ${dark ? 'bg-[#1e1e1e] border-[#323233] text-[#cccccc]' : 'bg-white border-neutral-300 text-black'}`}
+          className={`w-full h-8 px-2 rounded border text-sm input-theme placeholder:text-muted`}
         />
       </div>
       {!connected && (
@@ -74,19 +74,19 @@ export default function SidebarBuckets() {
   {connected && isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
   {isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
   {/* Connection errors are displayed in the main panel to avoid clutter. */}
-      {(!isSwitchingProfile && connected && !isError) && (
+    {(!isSwitchingProfile && connected && !isError) && (
         (data && data.length > 0) ? (
-          <ul className={`text-sm ${dark ? 'bg-[#252526]' : 'bg-white'}`}>
+      <ul className={`text-sm bg-header`}>
             {data
               .filter(name => name.toLowerCase().includes(bucketFilter.trim().toLowerCase()))
               .map(name => {
               const isActive = bucket === name
-              const hover = !isActive ? (dark ? 'hover:bg-[#2a2d2e]' : 'hover:bg-blue-50') : (dark ? 'hover:bg-[#094771]' : 'hover:bg-[#094771]')
+        const hover = !isActive ? 'row-hover' : 'row-hover'
               return (
                 <li key={name}>
                   <button
                     onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }}
-                    className={`w-full text-left px-3 py-2 ${hover} ${dark ? 'text-[#cccccc]' : 'text-black'} ${isActive ? 'bg-[#094771] text-white font-medium' : (dark ? 'bg-[#252526]' : 'bg-white')}`}
+          className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row font-medium' : ''}`}
                   >
                     {name}
                   </button>

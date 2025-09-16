@@ -46,7 +46,7 @@ export default function DeleteConfirmationModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-neutral-800 rounded-lg p-6 w-96 max-w-[90vw]">
+  <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default">
         <h2 className="text-lg font-semibold mb-4 text-red-600 dark:text-red-400">
           {title}
         </h2>
@@ -79,12 +79,12 @@ export default function DeleteConfirmationModal({
           </div>
         )}
 
-        <div className="flex justify-end gap-3">
+    <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={handleClose}
             disabled={isDeleting}
-            className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded-md disabled:opacity-50"
+      className="btn btn-secondary"
           >
             Cancel
           </button>
@@ -92,7 +92,7 @@ export default function DeleteConfirmationModal({
             type="button"
             onClick={handleConfirm}
             disabled={isDeleting}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+      className="btn btn-primary"
           >
             {isDeleting ? 'Deleting...' : 'Delete'}
           </button>

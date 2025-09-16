@@ -43,7 +43,7 @@ export default function CreateBucketModal({ isOpen, onClose, onCreateBucket }: C
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-neutral-800 rounded-lg p-6 w-96 max-w-[90vw]">
+  <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default">
         <h2 className="text-lg font-semibold mb-4">Create New Bucket</h2>
         
         <form onSubmit={handleSubmit}>
@@ -57,7 +57,7 @@ export default function CreateBucketModal({ isOpen, onClose, onCreateBucket }: C
               value={bucketName}
               onChange={(e) => setBucketName(e.target.value)}
               placeholder="my-bucket-name"
-              className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border rounded-md input-theme focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isCreating}
               pattern="^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
               minLength={3}
@@ -77,7 +77,7 @@ export default function CreateBucketModal({ isOpen, onClose, onCreateBucket }: C
               id="region"
               value={region}
               onChange={(e) => setRegion(e.target.value)}
-              className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border rounded-md input-theme focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isCreating}
             >
               <option value="us-east-1">US East (N. Virginia) - us-east-1</option>
@@ -97,19 +97,19 @@ export default function CreateBucketModal({ isOpen, onClose, onCreateBucket }: C
             </div>
           )}
 
-          <div className="flex justify-end gap-3">
+      <div className="flex justify-end gap-3">
             <button
               type="button"
               onClick={handleClose}
               disabled={isCreating}
-              className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded-md disabled:opacity-50"
+        className="btn btn-secondary"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isCreating || !bucketName.trim()}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+        className="btn btn-primary"
             >
               {isCreating ? 'Creating...' : 'Create Bucket'}
             </button>

@@ -5,7 +5,66 @@
 
 @layer base {
   html, body, #root { height: 100%; }
+  /* Theme tokens (light) */
+  :root {
+    --color-bg: #ffffff;
+    --color-panel: #ffffff;
+    --color-header: #f3f3f3;
+    --color-fg: #171717;
+    --color-fg-muted: #6b7280; /* neutral-500 */
+    --color-border: #e5e7eb;   /* neutral-200 */
+    --color-hover: #f5f5f5;    /* neutral-50 */
+    --color-selected: #094771; /* VSCode selection */
+    --color-accent: #0e639c;   /* VSCode blue */
+    --color-input-bg: #ffffff;
+    --color-overlay: rgba(255, 255, 255, 0.6);
+    --color-menu: #ffffff;
+    --color-placeholder: #6b7280;
+  }
+
+  /* Theme tokens (dark) */
+  html.dark, :root:where([data-theme="dark"]) {
+    --color-bg: #1e1e1e;
+    --color-panel: #1e1e1e;
+    --color-header: #252526;
+    --color-fg: #cccccc;
+    --color-fg-muted: #a3a3a3;
+    --color-border: #323233;
+    --color-hover: #2a2d2e;
+    --color-selected: #094771;
+    --color-accent: #3794ff;
+    --color-input-bg: #1e1e1e;
+    --color-overlay: rgba(0, 0, 0, 0.4);
+    --color-menu: #252526;
+    --color-placeholder: #9ca3af;
+  }
+
   /* Set base background/text colors for both themes */
-  body { background-color: #ffffff; color: #171717; }
-  html.dark body { background-color: #1e1e1e; color: #cccccc; }
+  body { background-color: var(--color-bg); color: var(--color-fg); }
+}
+
+/* Small utility layer for theme-aware colors */
+@layer utilities {
+  .bg-app { background-color: var(--color-bg); }
+  .bg-panel { background-color: var(--color-panel); }
+  .bg-header { background-color: var(--color-header); }
+  .text-app { color: var(--color-fg); }
+  .text-muted { color: var(--color-fg-muted); }
+  .border-default { border-color: var(--color-border); }
+  .row-hover:hover { background-color: var(--color-hover); }
+  .selected-row { background-color: var(--color-selected); color: #ffffff; }
+  .link-accent { color: var(--color-accent); }
+  .overlay-bg { background-color: var(--color-overlay); }
+  .menu-bg { background-color: var(--color-menu); }
+
+  .input-theme { background-color: var(--color-input-bg); color: var(--color-fg); border-color: var(--color-border); }
+  .input-theme::placeholder { color: var(--color-placeholder); opacity: 0.9; }
+
+  /* Button utilities */
+  .btn { padding: 0.375rem 0.75rem; font-size: 0.875rem; border-radius: 0.375rem; line-height: 1.25rem; }
+  .btn-secondary { background-color: var(--color-header); color: var(--color-fg); border: 1px solid var(--color-border); }
+  .btn-secondary:hover { background-color: var(--color-hover); }
+  .btn-primary { background-color: #0e639c; color: #ffffff; }
+  .btn-primary:hover { background-color: #1177bb; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 }

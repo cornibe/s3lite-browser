@@ -442,7 +442,7 @@ export default function ObjectExplorer() {
 
   if (!connected) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#1e1e1e]">
+      <div className="flex-1 flex items-center justify-center bg-panel">
         <div className="text-center p-6">
           <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-neutral-100 dark:bg-[#2a2d2e] flex items-center justify-center">
             <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 opacity-70"><path d="M3 12h2a7 7 0 0 1 7-7V3A9 9 0 0 0 3 12zm2 0H3a9 9 0 0 0 9 9v-2a7 7 0 0 1-7-7zm16 0a9 9 0 0 0-9-9v2a7 7 0 0 1 7 7h2zm-2 0a7 7 0 0 1-7 7v2a9 9 0 0 0 9-9h-2z"/></svg>
@@ -455,14 +455,14 @@ export default function ObjectExplorer() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white dark:bg-[#1e1e1e]" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
-      <div className="border-b border-neutral-200 dark:border-[#323233] px-3 py-2 flex items-center gap-2 text-sm bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]">
+    <div className="flex-1 flex flex-col bg-panel" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
+      <div className="border-b border-default px-3 py-2 flex items-center gap-2 text-sm bg-header text-app">
         <div className="opacity-70">{bucket ? `${bucket}` : 'No bucket selected'}</div>
         <div className="ml-2">/</div>
         <div className="flex items-center gap-1 flex-wrap">
       {crumbs.map((c, i) => (
             <div key={i} className="flex items-center gap-1">
-        <button className="hover:underline cursor-pointer text-[#0e639c] dark:text-[#3794ff]" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
+  <button className="hover:underline cursor-pointer link-accent" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
               {i < crumbs.length - 1 && <span className="opacity-50">/</span>}
             </div>
           ))}
@@ -475,12 +475,12 @@ export default function ObjectExplorer() {
               value={objectFilter}
               onChange={(e) => setObjectFilter(e.target.value)}
               placeholder="Filter objects…"
-              className="h-7 w-56 px-2 pr-6 rounded border border-neutral-300 dark:border-[#323233] bg-white dark:bg-[#1e1e1e] text-sm"
+              className="h-7 w-56 px-2 pr-6 rounded border input-theme text-sm placeholder:text-muted"
             />
             {objectFilter && (
               <button
                 onClick={() => setObjectFilter('')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted hover:text-app"
                 aria-label="Clear filter"
               >×</button>
             )}
@@ -519,12 +519,12 @@ export default function ObjectExplorer() {
               </button>
             </>
           )}
-          {prefix && <button className="text-xs underline cursor-pointer text-[#0e639c] dark:text-[#3794ff]" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
+    {prefix && <button className="text-xs underline cursor-pointer link-accent" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
         </div>
       </div>
 
   {/* Main content area */}
-  <div className="relative flex-1 overflow-auto bg-white dark:bg-[#1e1e1e]" onClick={(e) => {
+  <div className="relative flex-1 overflow-auto bg-panel" onClick={(e) => {
         // Only deselect if clicking directly on the container, not on any child elements
         if (e.target === e.currentTarget) {
           trace('ui', 'deselect on background click')
@@ -532,7 +532,7 @@ export default function ObjectExplorer() {
         }
       }}>
         {showRefreshOverlay && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-black/40 pointer-events-none">
+          <div className="absolute inset-0 z-10 flex items-center justify-center overlay-bg pointer-events-none">
             <svg className="h-8 w-8 animate-spin text-[#0e639c] dark:text-[#3794ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
               <circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
               <path d="M21 12a9 9 0 0 0-9-9" strokeWidth="3" />
@@ -555,8 +555,8 @@ export default function ObjectExplorer() {
             </div>
           </div>
         )}
-        {!connectionError && isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
-        {!connectionError && isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
+  {!connectionError && isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
+  {!connectionError && isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
         {!connectionError && isError && (
           <div className="px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-3">
             <span>{(error as Error)?.message || 'Failed to load objects.'}</span>
@@ -566,8 +566,8 @@ export default function ObjectExplorer() {
   {/* query-specific errors are shown below; connectionError is also surfaced above */}
         {/* Only render the objects table when there's no error and a bucket is selected */}
   {!connectionError && !isSwitchingProfile && !isError && bucket && (
-          <table className="min-w-full text-sm bg-white dark:bg-[#1e1e1e] text-black dark:text-[#cccccc]">
-            <thead className="sticky top-0 bg-[#f3f3f3] dark:bg-[#252526] border-b border-neutral-200 dark:border-[#323233] text-black dark:text-[#cccccc]">
+          <table className="min-w-full text-sm bg-panel text-app">
+            <thead className="sticky top-0 bg-header border-b border-default text-app">
               <tr className="text-left">
                 <th className="px-3 py-2 font-medium">
                   <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('name')}>
@@ -587,7 +587,7 @@ export default function ObjectExplorer() {
                 <th className="px-3 py-2 w-48 font-medium">Storage Class</th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-[#1e1e1e]" onClick={(e) => {
+            <tbody className="bg-panel" onClick={(e) => {
               // Deselect when clicking on tbody but not on a row
               if (e.target === e.currentTarget) {
                 trace('ui', 'deselect on table body click')
@@ -598,7 +598,7 @@ export default function ObjectExplorer() {
                 const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
-      <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'bg-[#094771] dark:bg-[#094771] text-white' : 'bg-white dark:bg-[#1e1e1e] hover:bg-neutral-50 dark:hover:bg-[#2a2d2e] text-black dark:text-[#cccccc]'} cursor-default border-b border-neutral-100 dark:border-[#323233]`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type) }} onContextMenu={(e) => onContextMenu(e, it)}>
+  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type) }} onContextMenu={(e) => onContextMenu(e, it)}>
                     <td className="px-3 py-2 font-medium">
                       <div className="flex items-center gap-2">
                         {it.type === 'folder' ? (
@@ -618,9 +618,9 @@ export default function ObjectExplorer() {
             </tbody>
           </table>
         )}
-        {hasNextPage && (
+    {hasNextPage && (
           <div className="px-3 py-3">
-    <button disabled={isFetchingNextPage} onClick={() => { trace('ui', 'load more'); fetchNextPage() }} className="px-3 py-1 rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">
+  <button disabled={isFetchingNextPage} onClick={() => { trace('ui', 'load more'); fetchNextPage() }} className="px-3 py-1 rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">
               {isFetchingNextPage ? 'Loading…' : 'Load more'}
             </button>
           </div>
@@ -630,13 +630,13 @@ export default function ObjectExplorer() {
       <Details items={items} selectedKey={selectedKey} />
 
       {contextMenu && (
-        <div className="fixed z-50 bg-white dark:bg-[#252526] border border-neutral-200 dark:border-[#323233] rounded shadow text-sm"
+        <div className="fixed z-50 menu-bg border border-default rounded shadow text-sm"
              style={{ left: contextMenu.x, top: contextMenu.y }}
              onClick={() => setContextMenu(null)}
         >
-          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-[#2a2d2e] cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
-          <button className="block w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-[#2a2d2e] cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
-          <div className="border-t border-neutral-200 dark:border-[#323233]"></div>
+          <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
+          <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+          <div className="border-t border-default"></div>
           <button className="block w-full text-left px-3 py-2 hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
             Delete
           </button>
@@ -646,9 +646,9 @@ export default function ObjectExplorer() {
       {showProps && (
         <div className="fixed inset-0 z-40 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/30" onClick={() => setShowProps(null)} />
-          <div className="relative z-10 w-[560px] max-w-[95vw] rounded bg-white dark:bg-[#252526] border border-neutral-300 dark:border-[#323233] p-4 shadow">
+      <div className="relative z-10 w-[560px] max-w-[95vw] rounded menu-bg border border-default p-4 shadow">
             <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">Properties</div>
+        <div className="font-semibold">Properties</div>
               <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded cursor-pointer" onClick={() => setShowProps(null)}>Close</button>
             </div>
             {showProps.type === 'folder' ? (
@@ -782,7 +782,7 @@ function Details({ items, selectedKey }: { items: Entry[]; selectedKey?: string 
     setError(undefined)
   }, [selectedKey, bucket])
 
-  if (!sel) return <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm opacity-70 bg-white dark:bg-[#252526]">Select an object or folder to see details.</div>
+  if (!sel) return <div className="border-t border-default px-3 py-2 text-sm opacity-70 bg-header">Select an object or folder to see details.</div>
   if (sel.type === 'folder') {
     const name = sel.data.prefix
 
@@ -806,7 +806,7 @@ function Details({ items, selectedKey }: { items: Entry[]; selectedKey?: string 
   function abortScan() { setIsAborted(true); setIsScanning(false) }
 
     return (
-      <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm flex flex-wrap items-center gap-4 bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]">
+  <div className="border-t border-default px-3 py-2 text-sm flex flex-wrap items-center gap-4 bg-header text-app">
         <div className="min-w-0"><span className="opacity-70">Prefix:</span> <span className="font-mono break-all">{name}</span></div>
         <div><span className="opacity-70">Objects (scanned):</span> {totalObjects.toLocaleString()}</div>
         <div><span className="opacity-70">Size (scanned):</span> {formatSize(totalBytes)}</div>
@@ -839,7 +839,7 @@ function Details({ items, selectedKey }: { items: Entry[]; selectedKey?: string 
   const filename = o.key.split('/').slice(-1)[0]
   const s3uri = bucket ? `s3://${bucket}/${o.key}` : o.key
   return (
-  <div className="border-t border-neutral-200 dark:border-[#323233] px-3 py-2 text-sm grid grid-cols-2 gap-3 bg-white dark:bg-[#252526] text-black dark:text-[#cccccc]">
+  <div className="border-t border-default px-3 py-2 text-sm grid grid-cols-2 gap-3 bg-header text-app">
       <div><span className="opacity-70">Key:</span> <span className="font-mono break-all">{o.key}</span></div>
       <div><span className="opacity-70">File name:</span> {filename}</div>
       <div><span className="opacity-70">Size:</span> {formatSize(o.size)}</div>

@@ -67,17 +67,17 @@ export default function Topbar() {
 
   const dark = Boolean(settings?.darkMode)
   return (
-    <div className={`border-b px-4 py-2 flex items-center gap-3 ${dark ? 'bg-[#252526] border-[#323233] text-[#cccccc]' : 'bg-neutral-50 border-neutral-200'}`}>
+    <div className={`border-b px-4 py-2 flex items-center gap-3 bg-header border-default text-app`}>
       <div className="font-semibold">S3 Browser</div>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <label className="text-sm opacity-80">Profile</label>
-        <select className={`px-2 py-1 rounded border text-sm cursor-pointer ${dark ? 'border-[#323233] bg-[#1e1e1e] text-[#cccccc]' : 'border-neutral-300 bg-white'}`} value={profile ?? ''} onChange={e => { const next = e.target.value || undefined; setIsSwitchingProfile(true); setConnected(false); setProfile(next); selectBucket(undefined); queryClient.clear(); setError(''); setConnectionError(undefined); if (next) { void connect(next) } else { setStatus('Not connected'); setIsSwitchingProfile(false) } }}>
+        <select className={`px-2 py-1 rounded border text-sm cursor-pointer input-theme`} value={profile ?? ''} onChange={e => { const next = e.target.value || undefined; setIsSwitchingProfile(true); setConnected(false); setProfile(next); selectBucket(undefined); queryClient.clear(); setError(''); setConnectionError(undefined); if (next) { void connect(next) } else { setStatus('Not connected'); setIsSwitchingProfile(false) } }}>
           <option value="">(none)</option>
           {profiles.map(p => (
             <option key={p.name} value={p.name}>{p.name}{p.isSso ? ' (SSO)' : ''}</option>
           ))}
         </select>
-        <button aria-label="Refresh profiles" title="Refresh profiles" className={`p-1 rounded disabled:opacity-50 cursor-pointer ${dark ? 'hover:bg-[#2a2d2e]' : 'hover:bg-neutral-200'}`} disabled={refreshing} onClick={() => { trace('ui', 'refresh profiles'); void refreshProfiles() }}>
+        <button aria-label="Refresh profiles" title="Refresh profiles" className={`p-1 rounded disabled:opacity-50 cursor-pointer row-hover`} disabled={refreshing} onClick={() => { trace('ui', 'refresh profiles'); void refreshProfiles() }}>
           {refreshing ? (
             <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9" strokeWidth="3"/></svg>
           ) : (

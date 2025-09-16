@@ -21,10 +21,10 @@ export default function App() {
   // Apply dark mode class on initial load and when settings change
   useEffect(() => {
     if (settings.darkMode) {
-      document.documentElement.classList.add('dark')
+  document.documentElement.classList.add('dark')
   document.body.classList.add('dark')
     } else {
-      document.documentElement.classList.remove('dark')
+  document.documentElement.classList.remove('dark')
   document.body.classList.remove('dark')
     }
   }, [settings.darkMode])
@@ -32,7 +32,7 @@ export default function App() {
   // Ensure dark mode is applied immediately on app load
   useEffect(() => {
     if (settings.darkMode) {
-      document.documentElement.classList.add('dark')
+  document.documentElement.classList.add('dark')
   document.body.classList.add('dark')
     }
   }, [])
@@ -67,7 +67,7 @@ export default function App() {
   const dark = Boolean(settings.darkMode)
   return (
     <div ref={containerRef} className={dark ? 'dark h-full' : 'h-full'}>
-      <div className="h-full flex flex-col overflow-hidden bg-white dark:bg-[#1e1e1e] text-black dark:text-[#cccccc]">
+      <div className="h-full flex flex-col overflow-hidden bg-app text-app">
         <Topbar />
         {/* Main area: sidebar | resizer | content */}
         <div className="flex flex-1 overflow-hidden">
