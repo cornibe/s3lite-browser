@@ -19,6 +19,9 @@ type State = {
     partSizeMiB?: number
     multipartThresholdMiB?: number
     darkMode?: boolean
+  // UI layout persistents
+  sidebarWidthPx?: number
+  queueHeightPx?: number
   }
   transfers: {
     jobs: Record<string, import('../../electron/types').TransferJob>
@@ -57,7 +60,9 @@ function loadSettings(): State['settings'] {
         partConcurrency: parsed.partConcurrency,
         partSizeMiB: parsed.partSizeMiB,
         multipartThresholdMiB: parsed.multipartThresholdMiB,
-        darkMode: Boolean(parsed.darkMode),
+    darkMode: Boolean(parsed.darkMode),
+    sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
+    queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
       }
     }
   } catch {}

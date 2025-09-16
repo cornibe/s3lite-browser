@@ -44,7 +44,7 @@ export default function SidebarBuckets() {
 
   const dark = Boolean(settings?.darkMode)
   return (
-    <div className={`w-64 overflow-y-auto border-r flex-shrink-0 ${dark ? 'bg-[#252526] border-[#323233] text-[#cccccc]' : 'bg-white border-neutral-200'}`}>
+    <div className={`h-full overflow-y-auto ${dark ? 'bg-[#252526] text-[#cccccc]' : 'bg-white'}`}>
       <div className={`px-3 py-2 border-b ${dark ? 'border-[#323233]' : 'border-neutral-200'}`}>
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
