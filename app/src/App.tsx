@@ -3,7 +3,7 @@ import type React from 'react'
 import Topbar from './components/Topbar'
 import SidebarBuckets from './components/SidebarBuckets'
 import ObjectExplorer from './components/ObjectExplorer'
-import TransferQueue from './components/TransferQueue'
+import BottomPanel from './components/BottomPanel'
 import SettingsModal from './components/SettingsModal'
 import { useStore } from './lib/store'
 
@@ -89,7 +89,7 @@ export default function App() {
             <ObjectExplorer />
           </div>
         </div>
-        {/* Horizontal resizer above transfer queue */}
+        {/* Horizontal resizer above bottom panel */}
         <button
           aria-label="Resize transfer queue"
           onMouseDown={startQueueDrag}
@@ -101,7 +101,7 @@ export default function App() {
           </svg>
         </button>
         <div style={{ height: queueHeight }} className="flex-none overflow-hidden">
-          <TransferQueue />
+          <BottomPanel />
         </div>
         <SettingsModal />
       </div>

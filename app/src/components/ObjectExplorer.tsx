@@ -113,7 +113,7 @@ function FileIcon({ fileName, className = "w-4 h-4" }: { fileName: string; class
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, isSwitchingProfile, connectionError, openSettings } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
@@ -250,12 +250,14 @@ export default function ObjectExplorer() {
     if (e.key === 'ArrowDown') {
       const next = Math.min((idx < 0 ? 0 : idx + 1), visibleItems.length - 1)
       const it = visibleItems[next]
-      setSelectedKey(it.type === 'object' ? it.data.key : it.data.prefix)
+      setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
+      setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
       e.preventDefault()
     } else if (e.key === 'ArrowUp') {
       const prev = Math.max((idx < 0 ? 0 : idx - 1), 0)
       const it = visibleItems[prev]
-      setSelectedKey(it.type === 'object' ? it.data.key : it.data.prefix)
+      setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
+      setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
       e.preventDefault()
     } else if (e.key === 'Enter') {
       const it = visibleItems[Math.max(idx, 0)]
@@ -425,7 +427,8 @@ export default function ObjectExplorer() {
     // Clear selection if we deleted the selected item
     const deletedKey = item.type === 'object' ? item.data.key : item.data.prefix
     if (selectedKey === deletedKey) {
-      setSelected(undefined, undefined)
+  setSelected(undefined, undefined)
+  setSelectedDetails(undefined)
     }
     
     // Refresh the object list
@@ -529,6 +532,7 @@ export default function ObjectExplorer() {
         if (e.target === e.currentTarget) {
           trace('ui', 'deselect on background click')
           setSelected(undefined, undefined)
+          setSelectedDetails(undefined)
         }
       }}>
         {showRefreshOverlay && (
@@ -592,13 +596,14 @@ export default function ObjectExplorer() {
               if (e.target === e.currentTarget) {
                 trace('ui', 'deselect on table body click')
                 setSelected(undefined, undefined)
+                setSelectedDetails(undefined)
               }
             }}>
               {visibleItems.map((it, i) => {
                 const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
-  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type) }} onContextMenu={(e) => onContextMenu(e, it)}>
+  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type); setSelectedDetails(it.type === 'object' ? { type: 'object', object: it.data } : { type: 'folder', folder: it.data }) }} onContextMenu={(e) => onContextMenu(e, it)}>
                     <td className="px-3 py-2 font-medium">
                       <div className="flex items-center gap-2">
                         {it.type === 'folder' ? (
@@ -627,7 +632,7 @@ export default function ObjectExplorer() {
         )}
       </div>
 
-      <Details items={items} selectedKey={selectedKey} />
+  {/* Details moved to bottom panel */}
 
       {contextMenu && (
         <div className="fixed z-50 menu-bg border border-default rounded shadow text-sm"
@@ -643,7 +648,7 @@ export default function ObjectExplorer() {
         </div>
       )}
 
-      {showProps && (
+  {showProps && (
         <div className="fixed inset-0 z-40 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/30" onClick={() => setShowProps(null)} />
       <div className="relative z-10 w-[560px] max-w-[95vw] rounded menu-bg border border-default p-4 shadow">
@@ -652,7 +657,7 @@ export default function ObjectExplorer() {
               <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded cursor-pointer" onClick={() => setShowProps(null)}>Close</button>
             </div>
             {showProps.type === 'folder' ? (
-              <FolderPropsPanel prefix={showProps.data.prefix} />
+      <div className="text-sm opacity-70">Use bottom Properties tab for details.</div>
             ) : (
               <div className="space-y-2 text-sm">
                 <div><span className="opacity-70">Key:</span> <span className="font-mono break-all">{showProps.data.key}</span></div>
@@ -681,172 +686,6 @@ export default function ObjectExplorer() {
         message={deleteConfirmation?.message || ''}
         itemType={deleteConfirmation?.item.type === 'folder' ? 'folder' : 'file'}
       />
-    </div>
-  )
-}
-
-function FolderPropsPanel({ prefix }: { prefix: string }) {
-  const { bucket } = useStore() as any
-  const [scanToken, setScanToken] = useState<string | undefined>(undefined)
-  const [totalObjects, setTotalObjects] = useState(0)
-  const [totalBytes, setTotalBytes] = useState(0)
-  const [isScanning, setIsScanning] = useState(false)
-  const [isAborted, setIsAborted] = useState(false)
-  const [error, setError] = useState<string | undefined>(undefined)
-
-  useEffect(() => {
-    // reset on prefix change
-    setScanToken(undefined)
-    setTotalObjects(0)
-    setTotalBytes(0)
-    setIsScanning(false)
-    setIsAborted(false)
-    setError(undefined)
-  }, [prefix, bucket])
-
-  async function scanNextPage() {
-    if (!bucket || isScanning || isAborted) return
-    setIsScanning(true)
-    setError(undefined)
-    try {
-      // If user clicks after finishing (no token) and some totals exist, treat as fresh rescan
-      const tokenToUse = scanToken
-      if (tokenToUse === undefined && (totalObjects > 0 || totalBytes > 0)) {
-        setTotalObjects(0)
-        setTotalBytes(0)
-      }
-      const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix, token: tokenToUse })
-      setTotalObjects(prev => prev + (res.objects || 0))
-      setTotalBytes(prev => prev + (res.bytes || 0))
-      setScanToken(res.nextToken)
-    } catch (e) {
-      setError((e as Error)?.message || 'Failed to scan folder')
-    } finally {
-      setIsScanning(false)
-    }
-  }
-
-  function abortScan() {
-    setIsAborted(true)
-    setIsScanning(false)
-  }
-
-  return (
-    <div className="space-y-3 text-sm">
-      <div><span className="opacity-70">Prefix:</span> <span className="font-mono break-all">{prefix}</span></div>
-      <div className="flex flex-wrap items-center gap-4">
-        <div><span className="opacity-70">Objects (scanned):</span> {totalObjects.toLocaleString()}</div>
-        <div><span className="opacity-70">Size (scanned):</span> {formatSize(totalBytes)}</div>
-        {error && <div className="text-red-600 dark:text-red-400">{error}</div>}
-        <div className="ml-auto flex items-center gap-2">
-          {!isAborted && (
-            <button disabled={isScanning} onClick={scanNextPage} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] disabled:opacity-50 cursor-pointer">
-              {scanToken === undefined && totalObjects === 0 ? (isScanning ? 'Scanning…' : 'Scan folder') : (isScanning ? 'Loading…' : (scanToken ? 'Load next page' : 'Rescan'))}
-            </button>
-          )}
-          {!isAborted && (scanToken || isScanning) && (
-            <button onClick={abortScan} className="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/30 cursor-pointer">Abort</button>
-          )}
-          {isAborted && (
-            <>
-              <span className="opacity-70">Aborted</span>
-              <button onClick={() => { setIsAborted(false); setError(undefined) }} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">Resume</button>
-            </>
-          )}
-        </div>
-      </div>
-      {(!isAborted && scanToken !== undefined) && (
-        <div className="opacity-70">More pages available… use "Load next page" to continue. Large folders can be scanned incrementally and aborted anytime.</div>
-      )}
-    </div>
-  )
-}
-
-function Details({ items, selectedKey }: { items: Entry[]; selectedKey?: string }) {
-  const { bucket } = useStore() as any
-  const sel = useMemo(() => items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey), [items, selectedKey])
-  const [scanToken, setScanToken] = useState<string | undefined>(undefined)
-  const [totalObjects, setTotalObjects] = useState(0)
-  const [totalBytes, setTotalBytes] = useState(0)
-  const [isScanning, setIsScanning] = useState(false)
-  const [isAborted, setIsAborted] = useState(false)
-  const [error, setError] = useState<string | undefined>(undefined)
-
-  // Reset state whenever selection changes
-  useEffect(() => {
-    setScanToken(undefined)
-    setTotalObjects(0)
-    setTotalBytes(0)
-    setIsScanning(false)
-    setIsAborted(false)
-    setError(undefined)
-  }, [selectedKey, bucket])
-
-  if (!sel) return <div className="border-t border-default px-3 py-2 text-sm opacity-70 bg-header">Select an object or folder to see details.</div>
-  if (sel.type === 'folder') {
-    const name = sel.data.prefix
-
-    async function scanNextPage() {
-      if (!bucket) return
-      if (isScanning) return
-      setIsScanning(true)
-      setError(undefined)
-      try {
-        const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix: name, token: scanToken })
-        setTotalObjects(prev => prev + (res.objects || 0))
-        setTotalBytes(prev => prev + (res.bytes || 0))
-        setScanToken(res.nextToken)
-      } catch (e) {
-        setError((e as Error)?.message || 'Failed to scan folder')
-      } finally {
-        setIsScanning(false)
-      }
-    }
-
-  function abortScan() { setIsAborted(true); setIsScanning(false) }
-
-    return (
-  <div className="border-t border-default px-3 py-2 text-sm flex flex-wrap items-center gap-4 bg-header text-app">
-        <div className="min-w-0"><span className="opacity-70">Prefix:</span> <span className="font-mono break-all">{name}</span></div>
-        <div><span className="opacity-70">Objects (scanned):</span> {totalObjects.toLocaleString()}</div>
-        <div><span className="opacity-70">Size (scanned):</span> {formatSize(totalBytes)}</div>
-        {error && <div className="text-red-600 dark:text-red-400">{error}</div>}
-        <div className="ml-auto flex items-center gap-2">
-          {!isAborted && scanToken !== undefined && (
-            <span className="opacity-70">More pages available</span>
-          )}
-          {!isAborted && (
-            <button disabled={isScanning} onClick={scanNextPage} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] disabled:opacity-50 cursor-pointer">
-              {scanToken === undefined && totalObjects === 0 ? (isScanning ? 'Scanning…' : 'Scan folder') : (isScanning ? 'Loading…' : (scanToken ? 'Load next page' : 'Rescan'))}
-            </button>
-          )}
-          {!isAborted && (scanToken || isScanning) && (
-            <button onClick={abortScan} className="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/30 cursor-pointer">
-              Abort
-            </button>
-          )}
-          {isAborted && (
-            <>
-              <span className="opacity-70">Aborted</span>
-              <button onClick={() => { setIsAborted(false); setError(undefined) }} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">Resume</button>
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
-  const o = sel.data
-  const filename = o.key.split('/').slice(-1)[0]
-  const s3uri = bucket ? `s3://${bucket}/${o.key}` : o.key
-  return (
-  <div className="border-t border-default px-3 py-2 text-sm grid grid-cols-2 gap-3 bg-header text-app">
-      <div><span className="opacity-70">Key:</span> <span className="font-mono break-all">{o.key}</span></div>
-      <div><span className="opacity-70">File name:</span> {filename}</div>
-      <div><span className="opacity-70">Size:</span> {formatSize(o.size)}</div>
-      <div><span className="opacity-70">Last modified:</span> {o.lastModified ? new Date(o.lastModified).toLocaleString() : '-'}</div>
-      <div><span className="opacity-70">ETag:</span> <span className="font-mono">{o.etag ?? ''}</span></div>
-      <div><span className="opacity-70">Storage class:</span> {o.storageClass ?? ''}</div>
-      <div className="col-span-2"><span className="opacity-70">S3 URI:</span> <span className="font-mono select-all">{s3uri}</span></div>
     </div>
   )
 }

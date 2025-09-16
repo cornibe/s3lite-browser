@@ -175,11 +175,12 @@ export default function TransferQueue() {
   }
 
   const dark = Boolean(useStore.getState().settings?.darkMode)
-  return (
-    <div className={`p-2 border-t text-sm flex-none overflow-x-hidden overflow-y-auto h-full border-default bg-header`}>
-      <div className="font-semibold mb-2">Transfer Queue</div>
-      {jobs.length === 0 && <div className="opacity-60">No active transfers.</div>}
-      {jobs.map(job => {
+
+  const activeJobs = jobs.filter(j => j.status === 'in-progress' || j.status === 'queued' || j.status === 'paused')
+  const completedJobs = jobs.filter(j => j.status === 'completed')
+  const failedJobs = jobs.filter(j => j.status === 'failed' || j.status === 'canceled')
+
+  function renderJob(job: TransferJobType) {
         const jobItems = allItems.filter(it => it.jobId === job.id)
         const total = job.totalBytes || 0
         const completed = job.completedBytes || 0
@@ -232,7 +233,39 @@ export default function TransferQueue() {
             </div>
           </div>
         )
-      })}
+  }
+
+  return (
+    <div className={`p-2 border-t text-sm flex-none overflow-x-hidden overflow-y-auto h-full border-default bg-header`}>
+      <div className="font-semibold mb-2">Transfer Queue</div>
+      {jobs.length === 0 && <div className="opacity-60">No transfers.</div>}
+
+      {activeJobs.length > 0 && (
+        <div className="mb-3">
+          <div className="font-medium mb-1">Active</div>
+          <div className="rounded border border-default p-2">
+            {activeJobs.map(renderJob)}
+          </div>
+        </div>
+      )}
+
+      {completedJobs.length > 0 && (
+        <div className="mb-3">
+          <div className="font-medium mb-1">Completed</div>
+          <div className="rounded border border-default p-2">
+            {completedJobs.map(renderJob)}
+          </div>
+        </div>
+      )}
+
+      {failedJobs.length > 0 && (
+        <div className="mb-3">
+          <div className="font-medium mb-1">Failed/Cancelled</div>
+          <div className="rounded border border-default p-2">
+            {failedJobs.map(renderJob)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

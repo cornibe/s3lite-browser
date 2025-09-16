@@ -6,6 +6,7 @@ type State = {
   prefix: string
   selectedKey?: string
   selectedType?: 'object' | 'folder'
+  selectedDetails?: { type: 'object'; object: import('../../electron/types').S3ObjectItem } | { type: 'folder'; folder: import('../../electron/types').S3Folder }
   connected: boolean
   connectionError?: string
   isSwitchingProfile?: boolean
@@ -19,6 +20,7 @@ type State = {
     partSizeMiB?: number
     multipartThresholdMiB?: number
     darkMode?: boolean
+  bottomPanelTab?: 'properties' | 'transfers'
   // UI layout persistents
   sidebarWidthPx?: number
   queueHeightPx?: number
@@ -38,6 +40,7 @@ type Actions = {
   setPrefix: (prefix: string) => void
   setSelectedKey: (key?: string) => void
   setSelected: (key?: string, type?: 'object' | 'folder') => void
+  setSelectedDetails: (details?: State['selectedDetails']) => void
   setTransfers: (transfers: State['transfers']) => void
   openSettings: () => void
   closeSettings: () => void
@@ -61,12 +64,13 @@ function loadSettings(): State['settings'] {
         partSizeMiB: parsed.partSizeMiB,
         multipartThresholdMiB: parsed.multipartThresholdMiB,
     darkMode: Boolean(parsed.darkMode),
+    bottomPanelTab: parsed.bottomPanelTab === 'properties' ? 'properties' : 'transfers',
     sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
     queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
       }
     }
   } catch {}
-  return { overwritePolicy: 'prompt', darkMode: true }
+  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers' }
 }
 
 function persistSettings(s: State['settings']) {
@@ -79,6 +83,7 @@ export const useStore = create<State & Actions>(set => ({
   prefix: '',
   selectedKey: undefined,
   selectedType: undefined,
+  selectedDetails: undefined,
   connected: false,
   isSettingsOpen: false,
   settings: loadSettings(),
@@ -91,7 +96,8 @@ export const useStore = create<State & Actions>(set => ({
   selectBucket: (bucket) => set({ bucket, prefix: '', selectedKey: undefined, selectedType: undefined }),
   setPrefix: (prefix) => set({ prefix, selectedKey: undefined, selectedType: undefined }),
   setSelectedKey: (selectedKey) => set({ selectedKey }),
-  setSelected: (key, type) => set({ selectedKey: key, selectedType: type }),
+  setSelected: (key, type) => set({ selectedKey: key, selectedType: type, selectedDetails: undefined }),
+  setSelectedDetails: (details) => set({ selectedDetails: details }),
   setTransfers: (transfers) => set({ transfers }),
   openSettings: () => set({ isSettingsOpen: true }),
   closeSettings: () => set({ isSettingsOpen: false }),
