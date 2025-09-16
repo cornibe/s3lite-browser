@@ -570,7 +570,7 @@ export default function ObjectExplorer() {
   {/* query-specific errors are shown below; connectionError is also surfaced above */}
         {/* Only render the objects table when there's no error and a bucket is selected */}
   {!connectionError && !isSwitchingProfile && !isError && bucket && (
-          <table className="min-w-full text-sm bg-panel text-app">
+          <table className="min-w-full text-sm bg-panel text-app table-zebra">
             <thead className="sticky top-0 bg-header border-b border-default text-app">
               <tr className="text-left">
                 <th className="px-3 py-2 font-medium">

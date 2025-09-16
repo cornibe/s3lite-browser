@@ -80,15 +80,18 @@ export default function SidebarBuckets() {
             {data
               .filter(name => name.toLowerCase().includes(bucketFilter.trim().toLowerCase()))
               .map(name => {
-              const isActive = bucket === name
-        const hover = !isActive ? 'row-hover' : 'row-hover'
+      const isActive = bucket === name
+    const hover = !isActive ? 'row-hover' : ''
               return (
                 <li key={name}>
                   <button
                     onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }}
           className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row font-medium' : ''}`}
                   >
-                    {name}
+                    <span className="inline-flex items-center gap-2">
+                      <BucketIcon className="w-4 h-4 opacity-80" />
+                      <span className="truncate">{name}</span>
+                    </span>
                   </button>
                 </li>
               )
@@ -105,5 +108,14 @@ export default function SidebarBuckets() {
         onCreateBucket={handleCreateBucket}
       />
     </div>
+  )
+}
+
+function BucketIcon({ className = 'w-4 h-4' }: { className?: string }) {
+  // Simple S3 bucket glyph; currentColor inherits from text color
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M12 2C7 2 3 3.79 3 6v9c0 2.21 4 4 9 4s9-1.79 9-4V6c0-2.21-4-4-9-4zm0 2c4.42 0 7 .99 7 2s-2.58 2-7 2-7-.99-7-2 2.58-2 7-2zm7 5.06V11c0 1.01-2.94 2.5-7 2.5S5 12.01 5 11V9.06C6.5 10.25 9.33 11 12 11s5.5-.75 7-1.94zM5 13.5V15c0 1.01 2.94 2.5 7 2.5s7-1.49 7-2.5v-1.5c-1.5 1.19-4.33 1.94-7 1.94s-5.5-.75-7-1.94z"/>
+    </svg>
   )
 }

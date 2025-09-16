@@ -7,12 +7,12 @@
   html, body, #root { height: 100%; }
   /* Theme tokens (light) */
   :root {
-    --color-bg: #ffffff;
-    --color-panel: #ffffff;
-    --color-header: #f3f3f3;
+  --color-bg: #ffffff;
+  --color-panel: #fafafa; /* light gray to avoid all-white */
+  --color-header: #f0f0f0; /* slightly darker header for contrast */
     --color-fg: #171717;
     --color-fg-muted: #6b7280; /* neutral-500 */
-    --color-border: #e5e7eb;   /* neutral-200 */
+  --color-border: #d1d5db;   /* neutral-300 for stronger separators */
     --color-hover: #f5f5f5;    /* neutral-50 */
     --color-selected: #094771; /* VSCode selection */
     --color-accent: #0e639c;   /* VSCode blue */
@@ -53,6 +53,7 @@
   .border-default { border-color: var(--color-border); }
   .row-hover:hover { background-color: var(--color-hover); }
   .selected-row { background-color: var(--color-selected); color: #ffffff; }
+  .selected-row:hover { background-color: var(--color-selected); color: #ffffff; }
   .link-accent { color: var(--color-accent); }
   .overlay-bg { background-color: var(--color-overlay); }
   .menu-bg { background-color: var(--color-menu); }
@@ -67,4 +68,7 @@
   .btn-primary { background-color: #0e639c; color: #ffffff; }
   .btn-primary:hover { background-color: #1177bb; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Subtle zebra striping for tables to improve readability in light/dark */
+  .table-zebra tbody tr:nth-child(even) { background-color: var(--color-hover); }
 }
