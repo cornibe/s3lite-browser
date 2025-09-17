@@ -52,6 +52,7 @@
   .text-muted { color: var(--color-fg-muted); }
   .border-default { border-color: var(--color-border); }
   .row-hover:hover { background-color: var(--color-hover); }
+  tr.selected-row.row-hover:hover { background-color: var(--color-selected); }
   .selected-row { background-color: var(--color-selected); color: #ffffff; }
   .selected-row:hover { background-color: var(--color-selected); color: #ffffff; }
   .link-accent { color: var(--color-accent); }
@@ -69,6 +70,6 @@
   .btn-primary:hover { background-color: #1177bb; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* Subtle zebra striping for tables to improve readability in light/dark */
-  .table-zebra tbody tr:nth-child(even) { background-color: var(--color-hover); }
+  /* Subtle zebra striping for tables; never override selected rows */
+  .table-zebra tbody tr:nth-child(even):not(.selected-row) { background-color: var(--color-hover); }
 }

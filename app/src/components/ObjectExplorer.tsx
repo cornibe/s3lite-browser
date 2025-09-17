@@ -507,8 +507,6 @@ export default function ObjectExplorer() {
               <button
                 onClick={async () => {
                   try {
-                    const dest = await (window as any).api.ui.pickDirectory({ title: 'Select download folder' })
-                    if (!dest) return
                     await handleDownload()
                   } catch (e) {
                     console.error('download failed', e)
