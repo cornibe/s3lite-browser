@@ -4,6 +4,8 @@ type State = {
   profile?: string
   bucket?: string
   prefix: string
+  // UI: which navigation item is highlighted (bucket list vs mounted entry)
+  navSelection?: { type: 'bucket' | 'mount'; id: string }
   selectedKey?: string
   selectedType?: 'object' | 'folder'
   selectedDetails?: { type: 'object'; object: import('../../electron/types').S3ObjectItem } | { type: 'folder'; folder: import('../../electron/types').S3Folder }
@@ -38,6 +40,7 @@ type Actions = {
   setConnected: (connected: boolean) => void
   setIsSwitchingProfile: (v: boolean) => void
   setConnectionError: (err?: string) => void
+  setNavSelection: (sel?: { type: 'bucket' | 'mount'; id: string }) => void
   selectBucket: (bucket: string | undefined) => void
   setPrefix: (prefix: string) => void
   setSelectedKey: (key?: string) => void
@@ -84,6 +87,7 @@ export const useStore = create<State & Actions>(set => ({
   profile: undefined,
   bucket: undefined,
   prefix: '',
+  navSelection: undefined,
   selectedKey: undefined,
   selectedType: undefined,
   selectedDetails: undefined,
@@ -96,6 +100,7 @@ export const useStore = create<State & Actions>(set => ({
   setConnected: (connected) => set({ connected }),
   setConnectionError: (err?: string) => set({ connectionError: err }),
   setIsSwitchingProfile: (v: boolean) => set({ isSwitchingProfile: v }),
+  setNavSelection: (sel) => set({ navSelection: sel }),
   selectBucket: (bucket) => set({ bucket, prefix: '', selectedKey: undefined, selectedType: undefined }),
   setPrefix: (prefix) => set({ prefix, selectedKey: undefined, selectedType: undefined }),
   setSelectedKey: (selectedKey) => set({ selectedKey }),

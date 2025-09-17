@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useBuckets } from '../lib/query'
 import { useStore } from '../lib/store'
 import { trace, warn } from '../lib/log'
@@ -6,13 +6,14 @@ import CreateBucketModal from './CreateBucketModal'
 import MountLocationModal from './MountLocationModal'
 
 export default function SidebarBuckets() {
-  const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings } = useStore() as any
+  const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings, navSelection, setNavSelection } = useStore() as any
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
   const [showCreateBucket, setShowCreateBucket] = useState(false)
   const [showMountModal, setShowMountModal] = useState(false)
   const [bucketFilter, setBucketFilter] = useState('')
   const [mountMenu, setMountMenu] = useState<{ idx: number; x: number; y: number } | null>(null)
   const [editMount, setEditMount] = useState<{ idx: number; bucket: string; prefix?: string } | null>(null)
+  const mountMenuRef = useRef<HTMLDivElement | null>(null)
 
   // If listing buckets fails (for example missing region or invalid creds),
   // surface that as a connectionError and clear any selected bucket/prefix so
@@ -24,16 +25,37 @@ export default function SidebarBuckets() {
   warn('ui', 'buckets load failed', { error: msg })
       // clear selected bucket/prefix when failure happens
       selectBucket(undefined)
+      setNavSelection(undefined)
     } else if (data && data.length > 0) {
       // successful load: clear any previous connection error
       if (connectionError) setConnectionError(undefined)
     }
-  }, [isError, error, data, selectBucket, setConnectionError, connectionError])
+  }, [isError, error, data, selectBucket, setConnectionError, connectionError, setNavSelection])
 
   useEffect(() => {
     if (!connected) return
-    if (!bucket && data && data.length > 0) selectBucket(data[0])
-  }, [connected, bucket, data, selectBucket])
+    if (!bucket && data && data.length > 0) { selectBucket(data[0]); setNavSelection({ type: 'bucket', id: data[0] }) }
+  }, [connected, bucket, data, selectBucket, setNavSelection])
+
+  // Close the mount context menu when clicking outside or pressing Escape
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (!mountMenu) return
+      const el = mountMenuRef.current
+      if (el && !el.contains(e.target as Node)) {
+        setMountMenu(null)
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && mountMenu) setMountMenu(null)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [mountMenu])
 
   const handleCreateBucket = async (bucketName: string, region?: string) => {
     const result = await (window as any).api.s3.createBucket({ bucketName, region })
@@ -94,15 +116,15 @@ export default function SidebarBuckets() {
   {(!isSwitchingProfile && connected && !isError) && (
         (data && data.length > 0) ? (
       <ul className={`text-sm bg-header`}>
-            {data
+    {data
               .filter(name => name.toLowerCase().includes(bucketFilter.trim().toLowerCase()))
               .map(name => {
-      const isActive = bucket === name
+  const isActive = navSelection?.type === 'bucket' && navSelection?.id === name
     const hover = !isActive ? 'row-hover' : ''
               return (
                 <li key={name}>
                   <button
-                    onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name) }}
+        onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name); setNavSelection({ type: 'bucket', id: name }) }}
           className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row font-medium' : ''}`}
                   >
                     <span className="inline-flex items-center gap-2">
@@ -130,7 +152,8 @@ export default function SidebarBuckets() {
           <div className="px-3 pt-3 pb-2 text-xs uppercase opacity-70 tracking-wide">Mounted</div>
           <ul className="text-sm">
             {settings.mounts.map((m: { bucket: string; prefix?: string }, idx: number) => {
-              const isActive = bucket === m.bucket
+              const id = `${m.bucket}:${m.prefix ?? ''}`
+              const isActive = navSelection?.type === 'mount' && navSelection?.id === id
               const hover = !isActive ? 'row-hover' : ''
               const label = m.prefix ? `${m.bucket}/${m.prefix}` : `${m.bucket}`
               return (
@@ -139,7 +162,7 @@ export default function SidebarBuckets() {
                   setMountMenu({ idx, x: e.clientX, y: e.clientY })
                 }}>
                   <button
-                    onClick={() => { selectBucket(m.bucket); setPrefix(m.prefix ?? ''); }}
+                    onClick={() => { selectBucket(m.bucket); setPrefix(m.prefix ?? ''); setNavSelection({ type: 'mount', id }); }}
                     className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row' : ''}`}
                     title={`s3://${label}`}
                   >
@@ -158,7 +181,7 @@ export default function SidebarBuckets() {
             <div
               className="fixed z-50 menu-bg border border-default rounded shadow-lg"
               style={{ left: mountMenu.x, top: mountMenu.y }}
-              onMouseLeave={() => setMountMenu(null)}
+              ref={mountMenuRef}
             >
               <button
                 className="block w-full text-left px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10"

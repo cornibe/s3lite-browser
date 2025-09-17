@@ -125,6 +125,7 @@ export default function ObjectExplorer() {
   const copyBtnRef = useRef<HTMLButtonElement | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
+  const ctxMenuRef = useRef<HTMLDivElement | null>(null)
   const [showProps, setShowProps] = useState<{ type: 'object' | 'folder'; data: any } | null>(null)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -365,6 +366,26 @@ export default function ObjectExplorer() {
     setSelected(item.type === 'object' ? item.data.key : item.data.prefix, item.type)
     setContextMenu({ x: e.clientX, y: e.clientY, item })
   }
+
+  // Close context menu on outside click or Escape
+  useEffect(() => {
+    function onDocMouseDown(ev: MouseEvent) {
+      if (!contextMenu) return
+      const el = ctxMenuRef.current
+      if (el && !el.contains(ev.target as Node)) {
+        setContextMenu(null)
+      }
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === 'Escape' && contextMenu) setContextMenu(null)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [contextMenu])
 
   async function handleDownload(item?: Entry) {
     const it = item || (items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey))
@@ -714,11 +735,11 @@ export default function ObjectExplorer() {
 
   {/* Details moved to bottom panel */}
 
-      {contextMenu && (
-        <div className="fixed z-50 menu-bg border border-default rounded shadow text-sm"
-             style={{ left: contextMenu.x, top: contextMenu.y }}
-             onClick={() => setContextMenu(null)}
-        >
+   {contextMenu && (
+     <div className="fixed z-50 menu-bg border border-default rounded shadow text-sm"
+       style={{ left: contextMenu.x, top: contextMenu.y }}
+       ref={ctxMenuRef}
+     >
           <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
           <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
           <div className="border-t border-default"></div>
