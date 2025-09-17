@@ -1,8 +1,9 @@
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import path from 'path'
 import { registerIpc } from './ipc'
 import { getLogger, initLogger } from './log'
 
+let mainWindow: BrowserWindow | null = null
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -17,6 +18,7 @@ function createWindow() {
   const devUrl = process.env.VITE_DEV_SERVER_URL
   if (devUrl) win.loadURL(devUrl)
   else win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  mainWindow = win
 }
 
 async function setup() {
@@ -58,6 +60,14 @@ async function setup() {
         { role: 'reload' as const },
         { role: 'toggleDevTools' as const },
         { type: 'separator' as const },
+        {
+          label: 'Settings',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('ui:openSettings')
+            }
+          }
+        },
         {
           label: 'Open Logs Folder',
           click: async () => { await getLogger().openLogsFolder() }

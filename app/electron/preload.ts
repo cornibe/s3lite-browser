@@ -16,6 +16,7 @@ const Channels = {
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
+  UI_OPEN_SETTINGS: 'ui:openSettings',
   LOG_WRITE: 'log:write',
   LOG_GET_LEVEL: 'log:getLevel',
   LOG_SET_LEVEL: 'log:setLevel',
@@ -57,6 +58,11 @@ const api: RendererAPI = {
         type: file.type
       }))
       return ipcRenderer.invoke(Channels.UI_PROCESS_DROPPED_FILES, fileData)
+    },
+    onOpenSettings: (cb: () => void) => {
+      const handler = () => cb()
+      ipcRenderer.on(Channels.UI_OPEN_SETTINGS, handler)
+      return () => ipcRenderer.removeListener(Channels.UI_OPEN_SETTINGS, handler)
     }
   },
   log: {

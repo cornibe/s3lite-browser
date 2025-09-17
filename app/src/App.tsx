@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import Topbar from './components/Topbar'
 import TabBar from './components/TabBar'
 import SidebarBuckets from './components/SidebarBuckets'
 import ObjectExplorer from './components/ObjectExplorer'
@@ -66,12 +65,18 @@ export default function App() {
   }
 
   const dark = Boolean(settings.darkMode)
+  // Open settings when menu triggers it
+  useEffect(() => {
+    const off = (window as any)?.api?.ui?.onOpenSettings?.(() => {
+      try { (useStore.getState() as any).openSettings() } catch {}
+    })
+    return () => { if (typeof off === 'function') off() }
+  }, [])
   return (
     <div ref={containerRef} className={dark ? 'dark h-full' : 'h-full'}>
       <div className="h-full flex flex-col overflow-hidden bg-app text-app">
   {/* Tabs above the bucket toolbar */}
   <TabBar />
-  <Topbar />
         {/* Main area: sidebar | resizer | content */}
         <div className="flex flex-1 overflow-hidden">
           <div style={{ width: sidebarWidth }} className="flex-shrink-0 h-full">

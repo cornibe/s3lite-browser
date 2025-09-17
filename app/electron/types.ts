@@ -169,6 +169,7 @@ export interface RendererAPI {
     pickCredentialsFile(): Promise<string | undefined>
     pickDirectory(options?: { title?: string; defaultPath?: string }): Promise<string | undefined>
     processDroppedFiles(fileData: Array<{ name: string; size: number; type: string }>): Promise<Array<{ path: string; size: number; name: string }>>
+  onOpenSettings(cb: () => void): () => void
   }
   log: {
     write(payload: { level: 'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL'; scope: string; msg: string; meta?: Record<string, unknown> }): Promise<void>
@@ -202,6 +203,7 @@ export const IpcChannels = {
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
+  UI_OPEN_SETTINGS: 'ui:openSettings',
   LOG_WRITE: 'log:write',
   LOG_GET_LEVEL: 'log:getLevel',
   LOG_SET_LEVEL: 'log:setLevel',

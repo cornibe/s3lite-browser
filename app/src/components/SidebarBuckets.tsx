@@ -1,19 +1,61 @@
 import { useEffect, useRef, useState } from 'react'
 import { useBuckets } from '../lib/query'
 import { useStore } from '../lib/store'
-import { trace, warn } from '../lib/log'
+import { trace, warn, info } from '../lib/log'
 import CreateBucketModal from './CreateBucketModal'
 import MountLocationModal from './MountLocationModal'
 
 export default function SidebarBuckets() {
-  const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings, navSelection, setNavSelection } = useStore() as any
+  const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings, navSelection, setNavSelection, setProfile, setIsSwitchingProfile, activeTabId } = useStore() as any
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
+  const [profiles, setProfiles] = useState<{ name: string; isSso?: boolean }[]>([])
+  const [refreshingProfiles, setRefreshingProfiles] = useState(false)
+  const [profileCollapsed, setProfileCollapsed] = useState<boolean>(Boolean(profile))
   const [showCreateBucket, setShowCreateBucket] = useState(false)
   const [showMountModal, setShowMountModal] = useState(false)
   const [bucketFilter, setBucketFilter] = useState('')
   const [mountMenu, setMountMenu] = useState<{ idx: number; x: number; y: number } | null>(null)
   const [editMount, setEditMount] = useState<{ idx: number; bucket: string; prefix?: string } | null>(null)
   const mountMenuRef = useRef<HTMLDivElement | null>(null)
+  // Profiles at the top of sidebar
+  useEffect(() => { void refreshProfiles() }, [])
+  // On tab change, default to expanded if this tab has no profile yet; collapse if it does
+  useEffect(() => {
+    setProfileCollapsed(Boolean(profile))
+  }, [activeTabId])
+  useEffect(() => { if (profile) setProfileCollapsed(true) }, [profile])
+  async function refreshProfiles() {
+    setRefreshingProfiles(true)
+    try {
+      const list = await (window as any).api.s3.listProfiles()
+      setProfiles(list)
+      info('ui', 'profiles loaded', { count: list.length })
+      if (!profile) {
+        const hasDefault = list.find(p => p.name === 'default')
+        if (hasDefault) setProfile('default')
+      }
+    } catch {
+      setProfiles([])
+    } finally {
+      setRefreshingProfiles(false)
+    }
+  }
+  async function connect(p?: string) {
+    setIsSwitchingProfile(true)
+    setConnected(false)
+    try {
+      const chosen = p ?? profile
+      const res = await (window as any).api.s3.init({ profile: chosen })
+      if (!res?.ok) throw new Error(res?.error || 'Failed to connect')
+      setConnected(true)
+    } catch (e) {
+      setConnected(false)
+      selectBucket(undefined)
+      setConnectionError((e as Error)?.message || 'Failed to connect')
+    } finally {
+      setIsSwitchingProfile(false)
+    }
+  }
 
   // If listing buckets fails (for example missing region or invalid creds),
   // surface that as a connectionError and clear any selected bucket/prefix so
@@ -71,7 +113,53 @@ export default function SidebarBuckets() {
   const dark = Boolean(settings?.darkMode)
   return (
     <div className={`h-full overflow-y-auto bg-header text-app`}>
-      <div className={`px-3 py-2 border-b border-default`}>
+      <div className={`px-3 ${profileCollapsed ? 'py-1' : 'py-2'} border-b border-default space-y-2`}>
+        {/* Profile header: collapsible */}
+        <div
+          className={`flex items-center gap-2 ${profileCollapsed ? 'cursor-pointer' : ''}`}
+          onClick={() => { if (profileCollapsed) setProfileCollapsed(false) }}
+          title={profileCollapsed ? 'Expand' : undefined}
+        >
+          <button
+            className="p-1 rounded row-hover cursor-pointer"
+            aria-label={profileCollapsed ? 'Expand profile' : 'Collapse profile'}
+            onClick={() => setProfileCollapsed(v => !v)}
+            title={profileCollapsed ? 'Expand' : 'Collapse'}
+          >
+            {profileCollapsed ? (
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden><path d="M9 6l6 6-6 6"/></svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden><path d="M6 9l6 6 6-6"/></svg>
+            )}
+          </button>
+          <div className="text-xs uppercase opacity-70 tracking-wide">Profile</div>
+          {profile && (
+            <div className="ml-auto text-xs opacity-80 truncate" title={profile}> {profile} </div>
+          )}
+        </div>
+        {!profileCollapsed && (
+          <div className="flex items-center gap-2">
+            <select
+              className={`h-7 px-2 rounded border text-sm input-theme cursor-pointer flex-1`}
+              value={profile ?? ''}
+              onChange={(e) => { const next = e.target.value || undefined; setProfile(next); selectBucket(undefined); if (next) { void connect(next); setProfileCollapsed(true) } }}
+            >
+              <option value="">(none)</option>
+              {profiles.map(p => (
+                <option key={p.name} value={p.name}>{p.name}{p.isSso ? ' (SSO)' : ''}</option>
+              ))}
+            </select>
+            <button aria-label="Refresh profiles" title="Refresh profiles" className="p-1 rounded row-hover disabled:opacity-50 cursor-pointer" disabled={refreshingProfiles} onClick={() => { void refreshProfiles() }}>
+              {refreshingProfiles ? (
+                <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9" strokeWidth="3"/></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4"><path d="M3 12a9 9 0 1 1 9 9 1 1 0  1 1 0-2 7 7 0 1 0-7-7H3l2.5-2.5A1 1 0 0 1 7 10l-4 4-4-4a1 1 0 0 1 1.5-1.5L3 12z"/></svg>
+              )}
+            </button>
+          </div>
+        )}
+        {/* Separator between Profile and Buckets */}
+        <div className="border-t border-default" />
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
           {connected && !isSwitchingProfile && (
