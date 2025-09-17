@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useObjects } from '../lib/query'
 import { useStore } from '../lib/store'
 import type { S3ObjectItem, S3Folder, TransferEvent } from '../../electron/types'
@@ -13,13 +14,8 @@ type Entry = (
 
 function splitPrefix(prefix: string) {
   const parts = prefix.split('/').filter(Boolean)
-  const crumbs = [{ label: 'root', value: '' }]
   let acc = ''
-  for (const p of parts) {
-    acc += p + '/'
-    crumbs.push({ label: p, value: acc })
-  }
-  return crumbs
+  return parts.map((p) => { acc += p + '/'; return { label: p, value: acc } })
 }
 
 function formatSize(n: number) {
@@ -112,10 +108,22 @@ function FileIcon({ fileName, className = "w-4 h-4" }: { fileName: string; class
   )
 }
 
+function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/>
+    </svg>
+  )
+}
+
 export default function ObjectExplorer() {
   const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = useState(false)
+  const copyTimer = useRef<number | undefined>(undefined)
+  const copyBtnRef = useRef<HTMLButtonElement | null>(null)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
   const [showProps, setShowProps] = useState<{ type: 'object' | 'folder'; data: any } | null>(null)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
@@ -129,19 +137,15 @@ export default function ObjectExplorer() {
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'lastModified'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
-  // Reset prefix and selection when profile or bucket changes or when disconnected
-  // This prevents stale buckets/objects from previous profile remaining visible
-  // Note: relying on equality checks to avoid infinite loops
+  // Reset prefix and selection when disconnected to avoid stale UI
+  // Bucket selection elsewhere (store.selectBucket) already clears prefix by default.
+  // We avoid clearing on every bucket change here so mounted paths can set a prefix.
   useEffect(() => {
     if (!connected) {
       setPrefix('')
       setSelectedKey(undefined)
-      return
     }
-    // when bucket changes to undefined or different, reset prefix/selection
-    setPrefix('')
-    setSelectedKey(undefined)
-  }, [connected, profile, bucket, setPrefix, setSelectedKey])
+  }, [connected, setPrefix, setSelectedKey])
 
   // Listen for upload completion events to auto-refresh the object list
   useEffect(() => {
@@ -460,16 +464,69 @@ export default function ObjectExplorer() {
   return (
     <div className="flex-1 flex flex-col bg-panel" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
       <div className="border-b border-default px-3 py-2 flex items-center gap-2 text-sm bg-header text-app">
-        <div className="opacity-70">{bucket ? `${bucket}` : 'No bucket selected'}</div>
-        <div className="ml-2">/</div>
-        <div className="flex items-center gap-1 flex-wrap">
-      {crumbs.map((c, i) => (
-            <div key={i} className="flex items-center gap-1">
-  <button className="hover:underline cursor-pointer link-accent" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
-              {i < crumbs.length - 1 && <span className="opacity-50">/</span>}
+        {bucket ? (
+          <>
+            <div className="relative">
+              <button
+                ref={copyBtnRef}
+                className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                title="Copy S3 path"
+                onClick={async () => {
+                  const uri = `s3://${bucket}${prefix ? `/${prefix}` : '/'}`
+                  try { await navigator.clipboard.writeText(uri) } catch {}
+                  trace('ui', 'copy s3 path', { uri })
+                  setCopied(true)
+                  if (copyTimer.current) window.clearTimeout(copyTimer.current)
+                  // Position tooltip near the button using viewport coordinates
+                  const rect = copyBtnRef.current?.getBoundingClientRect()
+                  if (rect) {
+                    setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
+                  }
+                  copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
+                }}
+                aria-label="Copy S3 path"
+              >
+                <CopyIcon className="w-4 h-4" />
+              </button>
+              {/* Tooltip is rendered via portal to escape stacking contexts */}
+              {copied && tooltipPos && createPortal(
+                <div className="fixed z-[9999] px-2 py-0.5 rounded text-xs menu-bg border border-default shadow pointer-events-none"
+                  style={{ left: tooltipPos.x, top: tooltipPos.y, transform: 'translate(-50%, -100%)' }}
+                >
+                  Copied
+                </div>,
+                document.body
+              )}
             </div>
-          ))}
-        </div>
+            <span className="opacity-70">s3://</span>
+            {prefix ? (
+              <button
+                className="hover:underline cursor-pointer link-accent"
+                onClick={() => { trace('ui', 'breadcrumb bucket'); setPrefix('') }}
+                title={`Go to s3://${bucket}/`}
+              >
+                {bucket}
+              </button>
+            ) : (
+              <span className="opacity-90">{bucket}</span>
+            )}
+            <span className="opacity-50">/</span>
+            <div className="flex items-center gap-1 flex-wrap">
+              {crumbs.map((c, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  {i < crumbs.length - 1 ? (
+                    <button className="hover:underline cursor-pointer link-accent" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
+                  ) : (
+                    <span className="opacity-90">{c.label}</span>
+                  )}
+                  {i < crumbs.length - 1 && <span className="opacity-50">/</span>}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="opacity-70">No bucket selected</div>
+        )}
   <div className="ml-auto flex items-center gap-2">
           {/* Filter input */}
           <div className="relative">
@@ -560,14 +617,38 @@ export default function ObjectExplorer() {
   {!connectionError && isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
   {!connectionError && isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
         {!connectionError && isError && (
-          <div className="px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-3">
-            <span>{(error as Error)?.message || 'Failed to load objects.'}</span>
-            <button onClick={() => refetch()} className="underline cursor-pointer">Retry</button>
+          <div className="h-full w-full flex items-center justify-center p-6">
+            <div className="max-w-2xl text-center">
+              <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400">
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6"><path d="M11 15h2v2h-2zm0-8h2v6h-2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+              </div>
+              <h2 className="text-lg font-semibold mb-2">Failed to list objects</h2>
+              <p className="text-sm opacity-80 mb-4">{(error as Error)?.message || 'Unable to load this folder. Please try again.'}</p>
+              <div className="flex items-center justify-center gap-3">
+                <button className="px-3 py-1 text-sm rounded bg-[#0e639c] text-white hover:bg-[#1177bb] cursor-pointer" onClick={() => refetch()}>Retry</button>
+                <button className="px-3 py-1 text-sm rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer" onClick={() => openSettings()}>Settings</button>
+              </div>
+            </div>
           </div>
         )}
   {/* query-specific errors are shown below; connectionError is also surfaced above */}
-        {/* Only render the objects table when there's no error and a bucket is selected */}
+        {/* Render empty-state or objects table when there's no error and a bucket is selected */}
   {!connectionError && !isSwitchingProfile && !isError && bucket && (
+          visibleItems.length === 0 ? (
+            <div className="h-full w-full flex items-center justify-center p-6">
+              <div className="max-w-xl text-center">
+                <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-neutral-100 dark:bg-[#2a2d2e] flex items-center justify-center text-app/70">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
+                </div>
+                <h2 className="text-lg font-semibold mb-2">{objectFilter ? 'No items match your filter' : 'This folder is empty'}</h2>
+                <p className="text-sm opacity-80">
+                  {objectFilter
+                    ? 'Try adjusting or clearing the filter to see more results.'
+                    : 'Drag and drop files here to upload, or use + Folder to create a new folder.'}
+                </p>
+              </div>
+            </div>
+          ) : (
           <table className="min-w-full text-sm bg-panel text-app table-zebra">
             <thead className="sticky top-0 bg-header border-b border-default text-app">
               <tr className="text-left">
@@ -620,6 +701,7 @@ export default function ObjectExplorer() {
               })}
             </tbody>
           </table>
+          )
         )}
     {hasNextPage && (
           <div className="px-3 py-3">

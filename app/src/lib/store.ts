@@ -20,6 +20,8 @@ type State = {
     partSizeMiB?: number
     multipartThresholdMiB?: number
     darkMode?: boolean
+  // User-defined quick access mounts (persisted)
+  mounts?: Array<{ bucket: string; prefix?: string }>
   bottomPanelTab?: 'properties' | 'transfers'
   // UI layout persistents
   sidebarWidthPx?: number
@@ -64,13 +66,14 @@ function loadSettings(): State['settings'] {
         partSizeMiB: parsed.partSizeMiB,
         multipartThresholdMiB: parsed.multipartThresholdMiB,
     darkMode: Boolean(parsed.darkMode),
+    mounts: Array.isArray(parsed.mounts) ? parsed.mounts.filter((m: any) => m && typeof m.bucket === 'string').map((m: any) => ({ bucket: m.bucket, prefix: m.prefix || undefined })) : [],
     bottomPanelTab: parsed.bottomPanelTab === 'properties' ? 'properties' : 'transfers',
     sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
     queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
       }
     }
   } catch {}
-  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers' }
+  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers', mounts: [] }
 }
 
 function persistSettings(s: State['settings']) {
