@@ -45,7 +45,7 @@ export function registerIpc() {
     const t = Date.now()
     try {
       const out = await s3.folderStatsPage(params)
-      getLogger().debug('ipc', 's3:folderStatsPage ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, objects: out.objects, bytes: out.bytes, truncated: Boolean(out.nextToken) })
+      getLogger().debug('ipc', 's3:folderStatsPage ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, objects: out.objects, files: out.files, folders: out.folders, bytes: out.bytes, truncated: Boolean(out.nextToken) })
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to scan folder'

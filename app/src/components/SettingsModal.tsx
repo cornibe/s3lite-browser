@@ -23,6 +23,18 @@ export default function SettingsModal() {
 
         <div className="space-y-4">
           <div>
+            <label className="block text-sm font-medium mb-1">Folder scan pages (Properties)</label>
+            <input
+              className="w-full px-2 py-1 rounded border text-sm input-theme"
+              type="number"
+              min={1}
+              max={1000}
+              value={local.folderScanAutoPages ?? 10}
+              onChange={e => setLocal(s => ({ ...s, folderScanAutoPages: e.target.value ? Math.max(1, Math.min(1000, Number(e.target.value))) : 10 }))}
+            />
+            <div className="mt-1 text-xs opacity-70">How many S3 pages to scan automatically when opening folder Properties. Each page is up to 1000 keys.</div>
+          </div>
+          <div>
             <label className="block text-sm font-medium mb-1">When file exists (downloads)</label>
             <select className="w-full px-2 py-1 rounded border text-sm input-theme" value={local.overwritePolicy}
               onChange={e => setLocal(s => ({ ...s, overwritePolicy: e.target.value as any }))}>

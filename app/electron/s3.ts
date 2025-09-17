@@ -96,13 +96,21 @@ export async function folderStatsPage(params: FolderStatsPageParams): Promise<Fo
       MaxKeys: params.maxKeys ?? 2000
       // No Delimiter to include all nested objects
     }))
-    const pageObjects = (out.Contents ?? []).filter(o => (o.Key ?? '').length > 0)
-    // Count all objects including possible zero-size "folder markers" because they are still keys in the prefix
+  const pageObjects = (out.Contents ?? []).filter(o => (o.Key ?? '').length > 0)
+    // Derive counts: files vs folders (folder markers are zero-size keys ending with '/')
+    let files = 0
+    let folders = 0
+    for (const o of pageObjects) {
+      const key = o.Key || ''
+      const isFolderMarker = key.endsWith('/') && (o.Size ?? 0) === 0
+      if (isFolderMarker) folders++
+      else files++
+    }
     const objects = pageObjects.length
     const bytes = pageObjects.reduce((sum, o) => sum + (o.Size ?? 0), 0)
-    const nextToken = out.IsTruncated ? out.NextContinuationToken : undefined
-    getLogger().debug('aws', 'folderStatsPage', { bucket: params.bucket, prefix: params.prefix, objects, bytes, truncated: Boolean(nextToken), durationMs: Date.now() - start })
-    return { objects, bytes, nextToken }
+  const nextToken = out.IsTruncated ? out.NextContinuationToken : undefined
+    getLogger().debug('aws', 'folderStatsPage', { bucket: params.bucket, prefix: params.prefix, objects, files, folders, bytes, truncated: Boolean(nextToken), durationMs: Date.now() - start })
+  return { objects, files, folders, bytes, keys: pageObjects.map(o => o.Key!), nextToken }
   } catch (err) {
     throw toFriendlyError(`Scan folder s3://${params.bucket}/${params.prefix}`, err)
   }

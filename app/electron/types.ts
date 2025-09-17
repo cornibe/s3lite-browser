@@ -36,6 +36,9 @@ export type FolderStatsPageParams = {
 export type FolderStatsPageResult = {
   objects: number
   bytes: number
+  files?: number
+  folders?: number
+  keys?: string[]
   nextToken?: string
 }
 

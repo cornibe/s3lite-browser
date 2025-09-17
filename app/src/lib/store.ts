@@ -28,6 +28,8 @@ type State = {
   // UI layout persistents
   sidebarWidthPx?: number
   queueHeightPx?: number
+  // How many pages to auto-scan for folder properties before pausing (configurable)
+  folderScanAutoPages?: number
   }
   transfers: {
     jobs: Record<string, import('../../electron/types').TransferJob>
@@ -73,10 +75,11 @@ function loadSettings(): State['settings'] {
     bottomPanelTab: parsed.bottomPanelTab === 'properties' ? 'properties' : 'transfers',
     sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
     queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
+    folderScanAutoPages: typeof parsed.folderScanAutoPages === 'number' && parsed.folderScanAutoPages > 0 ? parsed.folderScanAutoPages : 10,
       }
     }
   } catch {}
-  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers', mounts: [] }
+  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers', mounts: [], folderScanAutoPages: 10 }
 }
 
 function persistSettings(s: State['settings']) {
