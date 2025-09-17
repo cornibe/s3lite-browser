@@ -117,7 +117,7 @@ function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
@@ -355,6 +355,7 @@ export default function ObjectExplorer() {
         trace('ui', 'upload failed to start', { error: res?.error || 'unknown' })
       } else {
         trace('ui', 'upload job created', { jobId: res.jobId })
+        registerJobForActiveTab(res.jobId)
       }
     } catch (error) {
       trace('ui', 'drop error', { error: (error as Error)?.message || 'unknown' })
@@ -394,9 +395,11 @@ export default function ObjectExplorer() {
       const dest = await (window as any).api.ui.pickDirectory({ title: 'Select download folder' })
       if (!dest) return
       if (it.type === 'folder') {
-        await (window as any).api.transfers.startPrefixDownload({ bucket, prefix: it.data.prefix, destDir: dest })
+        const res = await (window as any).api.transfers.startPrefixDownload({ bucket, prefix: it.data.prefix, destDir: dest })
+        if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
       } else {
-        await (window as any).api.transfers.startObjectDownload({ bucket, key: it.data.key, destDir: dest })
+        const res = await (window as any).api.transfers.startObjectDownload({ bucket, key: it.data.key, destDir: dest })
+        if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
       }
     } finally {
       setContextMenu(null)

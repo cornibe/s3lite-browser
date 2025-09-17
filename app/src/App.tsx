@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import Topbar from './components/Topbar'
+import TabBar from './components/TabBar'
 import SidebarBuckets from './components/SidebarBuckets'
 import ObjectExplorer from './components/ObjectExplorer'
 import BottomPanel from './components/BottomPanel'
@@ -68,7 +69,9 @@ export default function App() {
   return (
     <div ref={containerRef} className={dark ? 'dark h-full' : 'h-full'}>
       <div className="h-full flex flex-col overflow-hidden bg-app text-app">
-        <Topbar />
+  {/* Tabs above the bucket toolbar */}
+  <TabBar />
+  <Topbar />
         {/* Main area: sidebar | resizer | content */}
         <div className="flex flex-1 overflow-hidden">
           <div style={{ width: sidebarWidth }} className="flex-shrink-0 h-full">

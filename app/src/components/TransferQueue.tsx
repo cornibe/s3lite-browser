@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useMemo, useRef, useState, useEffect } from 'react'
 import { useStore } from '../lib/store'
-import type { TransferItem as TransferItemType, TransferJob as TransferJobType, TransferEvent } from '../../electron/types'
+import type { TransferItem as TransferItemType, TransferJob as TransferJobType } from '../../electron/types'
 import { clamp01, formatBytesIEC, ema, calcAlpha } from '../lib/format'
 
 type RowState = {
@@ -9,29 +9,7 @@ type RowState = {
   lastSampleAt?: number
 }
 
-function useThrottledListener(handler: (evt: TransferEvent) => void, fps = 15) {
-  const queued = useRef<TransferEvent[]>([])
-  const rafRef = useRef<number | null>(null)
-  const interval = Math.max(1, 1000 / fps)
-  const lastFlushRef = useRef(0)
-
-  useEffect(() => {
-    const off = (window as any).api.transfers.onEvent((evt: TransferEvent) => {
-      queued.current.push(evt)
-      const now = performance.now()
-      if (rafRef.current == null && now - lastFlushRef.current >= interval) {
-        rafRef.current = requestAnimationFrame(() => {
-          lastFlushRef.current = performance.now()
-          const events = queued.current
-          queued.current = []
-          rafRef.current = null
-          for (const e of events) handler(e)
-        })
-      }
-    })
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); off() }
-  }, [handler, interval])
-}
+// events are routed into store globally; no local listener here
 
 function ProgressBar({ percent }: { percent: number }) {
   const pct = Math.round(clamp01(percent) * 100)
@@ -136,32 +114,6 @@ const TransferItem: React.FC<{ item: TransferItemType; job: TransferJobType }> =
 
 export default function TransferQueue() {
   const { transfers, setTransfers } = useStore()
-
-  // Throttled event listener to avoid flicker and cap at ~15fps
-  useThrottledListener((evt) => {
-    useStore.setState(s => {
-      const jobs = { ...s.transfers.jobs }
-      const items = { ...s.transfers.items }
-      if (evt.type === 'job-state') {
-        const j = evt.job
-        jobs[j.id] = j
-        if (j.status === 'failed') {
-          for (const it of Object.values(items)) {
-            if (it.jobId === j.id && it.status !== 'completed') items[it.id] = { ...it, status: 'failed', error: j.error || it.error }
-          }
-        }
-      } else if (evt.type === 'item-state') {
-        const it = evt.item
-        const total = it.size || 0
-        // Ensure bytesTransferred never exceeds total size
-        const clamped = Math.min(Math.max(0, it.bytesTransferred || 0), total)
-        // For completed items, ensure bytesTransferred equals total
-        const finalBytes = it.status === 'completed' ? total : clamped
-        items[it.id] = { ...it, bytesTransferred: finalBytes }
-      }
-      return { transfers: { jobs, items } } as any
-    })
-  }, 15)
 
   const jobs = useMemo(() => Object.values(transfers.jobs), [transfers.jobs])
   const allItems = useMemo(() => Object.values(transfers.items), [transfers.items])

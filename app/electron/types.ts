@@ -153,7 +153,7 @@ export interface RendererAPI {
     init(params: S3InitParams): Promise<{ ok: true } | { ok: false; error: string }>
     listBuckets(): Promise<string[]>
     listObjects(params: ListObjectsParams): Promise<ListObjectsResult>
-  folderStatsPage(params: FolderStatsPageParams): Promise<FolderStatsPageResult>
+    folderStatsPage(params: FolderStatsPageParams): Promise<FolderStatsPageResult>
     listProfiles(): Promise<ProfileInfo[]>
     setAwsFiles(params: { credentialsFile?: string; configFile?: string }): Promise<{ ok: true }>
     createBucket(params: CreateBucketParams): Promise<{ ok: true } | { ok: false; error: string }>
@@ -167,7 +167,7 @@ export interface RendererAPI {
   }
   ui: {
     pickCredentialsFile(): Promise<string | undefined>
-  pickDirectory(options?: { title?: string; defaultPath?: string }): Promise<string | undefined>
+    pickDirectory(options?: { title?: string; defaultPath?: string }): Promise<string | undefined>
     processDroppedFiles(fileData: Array<{ name: string; size: number; type: string }>): Promise<Array<{ path: string; size: number; name: string }>>
   }
   log: {
