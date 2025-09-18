@@ -156,6 +156,8 @@ export interface RendererAPI {
     folderStatsPage(params: FolderStatsPageParams): Promise<FolderStatsPageResult>
     listProfiles(): Promise<ProfileInfo[]>
     setAwsFiles(params: { credentialsFile?: string; configFile?: string }): Promise<{ ok: true }>
+  getAwsFiles(): Promise<{ credentialsPath: string; configPath: string; credentialsText: string; configText: string }>
+  writeAwsFiles(params: { credentialsText: string; configText: string }): Promise<{ ok: true } | { ok: false; error: string }>
     createBucket(params: CreateBucketParams): Promise<{ ok: true } | { ok: false; error: string }>
     deleteObject(params: DeleteObjectParams): Promise<{ ok: true } | { ok: false; error: string }>
     deleteObjects(params: DeleteObjectsParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
@@ -196,6 +198,8 @@ export const IpcChannels = {
   S3_FOLDER_STATS_PAGE: 's3:folderStatsPage',
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
+  S3_GET_AWS_FILES: 's3:getAwsFiles',
+  S3_WRITE_AWS_FILES: 's3:writeAwsFiles',
   S3_CREATE_BUCKET: 's3:createBucket',
   S3_DELETE_OBJECT: 's3:deleteObject',
   S3_DELETE_OBJECTS: 's3:deleteObjects',

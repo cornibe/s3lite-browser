@@ -4,6 +4,7 @@ import { useStore } from '../lib/store'
 import { trace, warn, info } from '../lib/log'
 import CreateBucketModal from './CreateBucketModal'
 import MountLocationModal from './MountLocationModal'
+import EditProfilesModal from './EditProfilesModal'
 
 export default function SidebarBuckets() {
   const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings, navSelection, setNavSelection, setProfile, setIsSwitchingProfile, activeTabId } = useStore() as any
@@ -13,6 +14,7 @@ export default function SidebarBuckets() {
   const [profileCollapsed, setProfileCollapsed] = useState<boolean>(false)
   const [showCreateBucket, setShowCreateBucket] = useState(false)
   const [showMountModal, setShowMountModal] = useState(false)
+  const [showEditProfiles, setShowEditProfiles] = useState(false)
   const [bucketFilter, setBucketFilter] = useState('')
   const [mountMenu, setMountMenu] = useState<{ idx: number; x: number; y: number } | null>(null)
   const [editMount, setEditMount] = useState<{ idx: number; bucket: string; prefix?: string } | null>(null)
@@ -155,6 +157,12 @@ export default function SidebarBuckets() {
               ) : (
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4"><path d="M3 12a9 9 0 1 1 9 9 1 1 0  1 1 0-2 7 7 0 1 0-7-7H3l2.5-2.5A1 1 0 0 1 7 10l-4 4-4-4a1 1 0 0 1 1.5-1.5L3 12z"/></svg>
               )}
+            </button>
+            <button aria-label="Edit profiles" title="Edit profiles" className="p-1 rounded row-hover cursor-pointer" onClick={() => setShowEditProfiles(true)}>
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden>
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/>
+                <path d="M20.71 7.04a1.003 1.003 0 0 0 0-1.42L18.37 3.29a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.83z"/>
+              </svg>
             </button>
           </div>
         )}
@@ -327,6 +335,11 @@ export default function SidebarBuckets() {
           setSettings({ mounts })
           setEditMount(null)
         }}
+      />
+      <EditProfilesModal
+        isOpen={showEditProfiles}
+        onClose={() => setShowEditProfiles(false)}
+        onSaved={async () => { await refreshProfiles() }}
       />
     </div>
   )

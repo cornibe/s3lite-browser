@@ -74,6 +74,30 @@ export function registerIpc() {
     getLogger().info('fs', 'setAwsFiles', { credentialsFile: params.credentialsFile || null, configFile: params.configFile || null })
     return { ok: true as const }
   })
+  ipcMain.handle(IpcChannels.S3_GET_AWS_FILES, async () => {
+    const t = Date.now()
+    try {
+      const out = await s3.getAwsFiles()
+      getLogger().debug('ipc', 's3:getAwsFiles ok', { durationMs: Date.now() - t })
+      return out
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to read AWS files'
+      getLogger().warn('ipc', 's3:getAwsFiles error', { durationMs: Date.now() - t, error: msg })
+      throw e
+    }
+  })
+  ipcMain.handle(IpcChannels.S3_WRITE_AWS_FILES, async (_e, params: { credentialsText: string; configText: string }) => {
+    const t = Date.now()
+    try {
+      await s3.writeAwsFiles(params)
+      getLogger().info('ipc', 's3:writeAwsFiles ok', { durationMs: Date.now() - t, credsBytes: (params.credentialsText||'').length, cfgBytes: (params.configText||'').length })
+      return { ok: true as const }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to write AWS files'
+      getLogger().warn('ipc', 's3:writeAwsFiles error', { durationMs: Date.now() - t, error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
   
   ipcMain.handle(IpcChannels.S3_CREATE_BUCKET, async (_e, params) => {
     const t = Date.now()

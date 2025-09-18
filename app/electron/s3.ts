@@ -206,6 +206,37 @@ export function setAwsFiles(params: { credentialsFile?: string; configFile?: str
   overrideConfigPath = params.configFile
 }
 
+export async function getAwsFiles(): Promise<{ credentialsPath: string; configPath: string; credentialsText: string; configText: string }> {
+  const credsPath = overrideCredsPath || process.env.AWS_SHARED_CREDENTIALS_FILE || path.join(os.homedir(), '.aws', 'credentials')
+  const configPath = overrideConfigPath || process.env.AWS_CONFIG_FILE || path.join(os.homedir(), '.aws', 'config')
+  const credentialsText = await readFileSafe(credsPath)
+  const configText = await readFileSafe(configPath)
+  return { credentialsPath: credsPath, configPath, credentialsText, configText }
+}
+
+export async function writeAwsFiles(params: { credentialsText: string; configText: string }): Promise<void> {
+  const credsPath = overrideCredsPath || process.env.AWS_SHARED_CREDENTIALS_FILE || path.join(os.homedir(), '.aws', 'credentials')
+  const configPath = overrideConfigPath || process.env.AWS_CONFIG_FILE || path.join(os.homedir(), '.aws', 'config')
+  // ensure folder exists
+  const awsDir = path.dirname(credsPath)
+  try { await fs.promises.mkdir(awsDir, { recursive: true }) } catch {}
+  // simple backup
+  async function backupIfExists(p: string) {
+    try {
+      const stat = await fs.promises.stat(p)
+      if (stat.isFile()) {
+        const ts = new Date().toISOString().replace(/[:.]/g, '-')
+        await fs.promises.copyFile(p, `${p}.bak-${ts}`)
+      }
+    } catch {}
+  }
+  await backupIfExists(credsPath)
+  await backupIfExists(configPath)
+  // write files
+  await fs.promises.writeFile(credsPath, params.credentialsText ?? '', 'utf8')
+  await fs.promises.writeFile(configPath, params.configText ?? '', 'utf8')
+}
+
 function toFriendlyError(context: string, err: unknown): Error {
   const e = err as any
   const code = e?.name || e?.Code || e?.code || e?.$metadata?.httpStatusCode
