@@ -22,10 +22,12 @@ export function registerIpc() {
     try {
       const out = await s3.listBuckets()
       getLogger().debug('ipc', 's3:listBuckets ok', { durationMs: Date.now() - t, count: out.length })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListBuckets', status: 'ok', durationMs: Date.now() - t })) } catch {}
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to list buckets'
       getLogger().warn('ipc', 's3:listBuckets error', { durationMs: Date.now() - t, error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListBuckets', status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
       throw e
     }
   })
@@ -34,10 +36,12 @@ export function registerIpc() {
     try {
       const out = await s3.listObjects(params)
       getLogger().debug('ipc', 's3:listObjects ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', folders: out.folders.length, objects: out.objects.length, truncated: Boolean(out.nextToken) })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjects', bucket: params.bucket, prefix: params.prefix ?? '', status: 'ok', durationMs: Date.now() - t })) } catch {}
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to list objects'
       getLogger().warn('ipc', 's3:listObjects error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjects', bucket: params.bucket, prefix: params.prefix ?? '', status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
       throw e
     }
   })
@@ -89,10 +93,12 @@ export function registerIpc() {
     try {
       await s3.deleteObject(params.bucket, params.key)
       getLogger().info('ipc', 's3:deleteObject ok', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObject', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t })) } catch {}
       return { ok: true as const }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to delete object'
       getLogger().warn('ipc', 's3:deleteObject error', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObject', bucket: params.bucket, key: params.key, status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
       return { ok: false as const, error: msg }
     }
   })
@@ -102,10 +108,12 @@ export function registerIpc() {
     try {
       const result = await s3.deleteObjects(params.bucket, params.keys)
       getLogger().info('ipc', 's3:deleteObjects ok', { durationMs: Date.now() - t, bucket: params.bucket, totalKeys: params.keys.length, deleted: result.deleted.length, errors: result.errors.length })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObjects', bucket: params.bucket, status: 'ok', durationMs: Date.now() - t, extra: { totalKeys: params.keys.length, deleted: result.deleted.length, errors: result.errors.length } })) } catch {}
       return { ok: true as const, result }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to delete objects'
       getLogger().warn('ipc', 's3:deleteObjects error', { durationMs: Date.now() - t, bucket: params.bucket, totalKeys: params.keys.length, error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObjects', bucket: params.bucket, status: 'error', error: msg, durationMs: Date.now() - t, extra: { totalKeys: params.keys.length } })) } catch {}
       return { ok: false as const, error: msg }
     }
   })
@@ -115,10 +123,12 @@ export function registerIpc() {
     try {
       const result = await s3.deleteFolder(params.bucket, params.prefix)
       getLogger().info('ipc', 's3:deleteFolder ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, deleted: result.deleted.length, errors: result.errors.length })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteFolder', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t, extra: { deleted: result.deleted.length, errors: result.errors.length } })) } catch {}
       return { ok: true as const, result }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to delete folder'
       getLogger().warn('ipc', 's3:deleteFolder error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteFolder', bucket: params.bucket, prefix: params.prefix, status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
       return { ok: false as const, error: msg }
     }
   })
@@ -192,10 +202,12 @@ export function registerIpc() {
     try {
       const jobId = await transfers.startObject(win, params)
       getLogger().info('xfer', 'start object', { durationMs: Date.now() - t, jobId, bucket: params.bucket, key: params.key })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadObject', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t, extra: { jobId } })) } catch {}
       return { ok: true as const, jobId }
     } catch (err) {
       const msg = (err as Error)?.message || 'Failed to start object download'
       getLogger().warn('xfer', 'start object failed', { error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadObject', bucket: params.bucket, key: params.key, status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
       return { ok: false as const, error: msg }
     }
   })
@@ -206,10 +218,12 @@ export function registerIpc() {
     try {
       const jobId = await transfers.startPrefix(win, params)
       getLogger().info('xfer', 'start prefix', { durationMs: Date.now() - t, jobId, bucket: params.bucket, prefix: params.prefix })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadPrefix', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t, extra: { jobId } })) } catch {}
       return { ok: true as const, jobId }
     } catch (err) {
       const msg = (err as Error)?.message || 'Failed to start prefix download'
       getLogger().warn('xfer', 'start prefix failed', { error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadPrefix', bucket: params.bucket, prefix: params.prefix, status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
       return { ok: false as const, error: msg }
     }
   })
@@ -220,10 +234,12 @@ export function registerIpc() {
     try {
       const jobId = await transfers.startUpload(win, params)
       getLogger().info('xfer', 'start upload', { durationMs: Date.now() - t, jobId, bucket: params.bucket, files: params.files?.length || 0 })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'Upload', bucket: params.bucket, status: 'ok', durationMs: Date.now() - t, extra: { jobId, files: params.files?.length || 0 } })) } catch {}
       return { ok: true as const, jobId }
     } catch (err) {
       const msg = (err as Error)?.message || 'Failed to start upload'
       getLogger().warn('xfer', 'start upload failed', { error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'Upload', bucket: params.bucket, status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
       return { ok: false as const, error: msg }
     }
   })

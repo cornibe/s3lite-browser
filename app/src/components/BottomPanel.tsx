@@ -25,9 +25,15 @@ export default function BottomPanel() {
         >
           Transfers
         </button>
+        <button
+          className={`px-2 py-1 text-sm rounded ${activeTab === 'log' ? 'bg-neutral-200 dark:bg-[#2a2d2e]' : 'hover:bg-neutral-200 dark:hover:bg-[#2a2d2e]'} cursor-pointer`}
+          onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'log' as any })}
+        >
+          Log
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
-        {activeTab === 'properties' ? <PropertiesPanel /> : <TransfersPanel />}
+        {activeTab === 'properties' ? <PropertiesPanel /> : activeTab === 'transfers' ? <TransfersPanel /> : <LogPanel />}
       </div>
     </div>
   )
@@ -48,6 +54,114 @@ function TransfersPanel() {
   return (
     <div className="h-full overflow-hidden">
       <TransferQueue />
+    </div>
+  )
+}
+
+function LogPanel() {
+  const { awsLog, clearAwsLog } = useStore() as any
+  const [selected, setSelected] = useState<any | null>(null)
+  const [statusFilter, setStatusFilter] = useState<'all'|'ok'|'error'>('all')
+  const [scopeFilter, setScopeFilter] = useState<'all'|'s3'|'xfer'>('all')
+  const [text, setText] = useState('')
+  const filtered = React.useMemo(() => {
+    const t = text.trim().toLowerCase()
+    return awsLog.filter((e: any) => {
+      if (statusFilter !== 'all' && e.status !== (statusFilter === 'ok' ? 'ok' : 'error')) return false
+      if (scopeFilter !== 'all' && e.scope !== scopeFilter) return false
+      if (!t) return true
+      const target = e.key ? `s3://${e.bucket}/${e.key}` : (e.prefix ? `s3://${e.bucket}/${e.prefix}` : (e.bucket ? `s3://${e.bucket}` : ''))
+      const hay = `${e.action || ''}\n${target}\n${e.error || ''}\n${JSON.stringify(e.extra || {})}`.toLowerCase()
+      return hay.includes(t)
+    })
+  }, [awsLog, statusFilter, scopeFilter, text])
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-2 py-1 border-b border-default bg-header flex items-center gap-2 flex-wrap">
+        <div className="text-sm opacity-70">AWS commands: {awsLog.length}</div>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="opacity-70">Status</span>
+          <select className="input-theme text-xs h-6 px-1" value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)}>
+            <option value="all">All</option>
+            <option value="ok">OK</option>
+            <option value="error">Failed</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="opacity-70">Scope</span>
+          <select className="input-theme text-xs h-6 px-1" value={scopeFilter} onChange={e => setScopeFilter(e.target.value as any)}>
+            <option value="all">All</option>
+            <option value="s3">s3</option>
+            <option value="xfer">xfer</option>
+          </select>
+        </div>
+        <input className="input-theme h-6 text-xs px-2 w-64" placeholder="Search…" value={text} onChange={e => setText(e.target.value)} />
+        <button className="ml-auto px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer" onClick={() => clearAwsLog()}>Clear</button>
+      </div>
+      <div className="flex-1 overflow-auto">
+        <table className="min-w-full text-xs">
+          <thead className="sticky top-0 bg-header border-b border-default">
+            <tr className="text-left">
+              <th className="px-2 py-1 w-40">Time</th>
+              <th className="px-2 py-1 w-16">Scope</th>
+              <th className="px-2 py-1 w-40">Action</th>
+              <th className="px-2 py-1">Target</th>
+              <th className="px-2 py-1 w-24">Status</th>
+              <th className="px-2 py-1 w-24">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td className="px-2 py-2 opacity-60" colSpan={6}>No AWS operations yet.</td></tr>
+            ) : filtered.map((e: any, idx: number) => {
+              const target = e.key ? `s3://${e.bucket}/${e.key}` : (e.prefix ? `s3://${e.bucket}/${e.prefix}` : (e.bucket ? `s3://${e.bucket}` : ''))
+              return (
+                <tr key={idx} className="border-b border-default row-hover cursor-pointer" onClick={() => setSelected(e)} title="Click for details">
+                  <td className="px-2 py-1 whitespace-nowrap">{new Date(e.ts || Date.now()).toLocaleTimeString()}</td>
+                  <td className="px-2 py-1">{e.scope}</td>
+                  <td className="px-2 py-1">{e.action}</td>
+                  <td className="px-2 py-1 truncate max-w-[28rem]" title={target}>{target}</td>
+                  <td className={`px-2 py-1 ${e.status === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>{e.status === 'ok' ? 'OK' : 'Failed'}</td>
+                  <td className="px-2 py-1">{typeof e.durationMs === 'number' ? `${e.durationMs} ms` : ''}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {selected && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)} />
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] max-w-[95vw] rounded menu-bg border border-default shadow p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold">Operation details</div>
+              <button className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer" onClick={() => setSelected(null)}>Close</button>
+            </div>
+            <div className="text-sm space-y-2">
+              <div><span className="opacity-70">Time:</span> {new Date(selected.ts || Date.now()).toLocaleString()}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><span className="opacity-70">Scope:</span> {selected.scope}</div>
+                <div><span className="opacity-70">Action:</span> {selected.action}</div>
+                <div className="col-span-2"><span className="opacity-70">Target:</span> <span className="font-mono break-all">{selected.key ? `s3://${selected.bucket}/${selected.key}` : (selected.prefix ? `s3://${selected.bucket}/${selected.prefix}` : (selected.bucket ? `s3://${selected.bucket}` : ''))}</span></div>
+                <div><span className="opacity-70">Status:</span> {selected.status === 'ok' ? 'OK' : 'Failed'}</div>
+                <div><span className="opacity-70">Duration:</span> {typeof selected.durationMs === 'number' ? `${selected.durationMs} ms` : '-'}</div>
+              </div>
+              {selected.error && (
+                <div className="p-2 rounded border border-red-300 dark:border-red-800 bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300">
+                  <div className="font-semibold mb-1">Error</div>
+                  <div className="whitespace-pre-wrap break-words">{selected.error}</div>
+                </div>
+              )}
+              {selected.extra && (
+                <div className="p-2 rounded border border-default bg-neutral-50 dark:bg-[#1e1f20]">
+                  <div className="font-semibold mb-1">Extra</div>
+                  <pre className="text-xs overflow-auto max-h-48"><code>{JSON.stringify(selected.extra, null, 2)}</code></pre>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

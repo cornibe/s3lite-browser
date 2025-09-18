@@ -178,6 +178,7 @@ export interface RendererAPI {
     getConsoleLevel(): Promise<{ level: 'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL' }>
     setConsoleLevel(level: 'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL'): Promise<{ level: 'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL' }>
     openDir(): Promise<{ ok: true }>
+  onAwsEvent(cb: (evt: { ts: number; scope: 's3'|'xfer'; action: string; bucket?: string; key?: string; prefix?: string; status: 'ok'|'error'; durationMs?: number; error?: string; extra?: any }) => void): () => void
   }
   transfers: {
     startObjectDownload(params: StartObjectDownload): Promise<{ ok: true; jobId: string } | { ok: false; error: string }>
@@ -210,6 +211,7 @@ export const IpcChannels = {
   LOG_GET_CONSOLE_LEVEL: 'log:getConsoleLevel',
   LOG_SET_CONSOLE_LEVEL: 'log:setConsoleLevel',
   LOG_OPEN_DIR: 'log:openDir',
+  LOG_AWS_EVENT: 'log:awsEvent',
   XFER_EVENT: 'xfer:event',
   XFER_START_OBJECT: 'xfer:startObject',
   XFER_START_PREFIX: 'xfer:startPrefix',

@@ -23,6 +23,7 @@ const Channels = {
   LOG_GET_CONSOLE_LEVEL: 'log:getConsoleLevel',
   LOG_SET_CONSOLE_LEVEL: 'log:setConsoleLevel',
   LOG_OPEN_DIR: 'log:openDir',
+  LOG_AWS_EVENT: 'log:awsEvent',
   XFER_EVENT: 'xfer:event',
   XFER_START_OBJECT: 'xfer:startObject',
   XFER_START_PREFIX: 'xfer:startPrefix',
@@ -71,7 +72,12 @@ const api: RendererAPI = {
     setLevel: (level) => ipcRenderer.invoke(Channels.LOG_SET_LEVEL, level),
     getConsoleLevel: () => ipcRenderer.invoke(Channels.LOG_GET_CONSOLE_LEVEL),
     setConsoleLevel: (level) => ipcRenderer.invoke(Channels.LOG_SET_CONSOLE_LEVEL, level),
-    openDir: () => ipcRenderer.invoke(Channels.LOG_OPEN_DIR)
+    openDir: () => ipcRenderer.invoke(Channels.LOG_OPEN_DIR),
+    onAwsEvent: (cb) => {
+      const handler = (_: any, evt: any) => cb(evt)
+      ipcRenderer.on(Channels.LOG_AWS_EVENT, handler)
+      return () => ipcRenderer.removeListener(Channels.LOG_AWS_EVENT, handler)
+    }
   },
   transfers: {
     startObjectDownload: (params: any) => ipcRenderer.invoke(Channels.XFER_START_OBJECT, params),

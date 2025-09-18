@@ -36,6 +36,19 @@ type SettingsState = {
   folderScanAutoPages?: number
 }
 
+export type AwsLogEntry = {
+  ts: number
+  scope: 's3' | 'xfer'
+  action: string
+  bucket?: string
+  key?: string
+  prefix?: string
+  status: 'ok' | 'error'
+  durationMs?: number
+  error?: string
+  extra?: any
+}
+
 type State = {
   // Tab collection
   tabs: Record<string, TabState>
@@ -58,6 +71,7 @@ type State = {
   settings: SettingsState
   // Job -> tab mapping to route transfer events
   jobTab: Record<string, string>
+  awsLog: AwsLogEntry[]
 }
 
 type Actions = {
@@ -88,6 +102,9 @@ type Actions = {
   startDownloadObject: (destDir: string) => Promise<void>
   startDownloadPrefix: (destDir: string) => Promise<void>
   startDownloadSelected: (destDir: string) => Promise<void>
+  // AWS log actions
+  addAwsLog: (entry: AwsLogEntry) => void
+  clearAwsLog: () => void
 }
 
 function loadSettings(): SettingsState {
@@ -178,6 +195,7 @@ export const useStore = create<State & Actions>((set, get) => {
     settings: loadSettings(),
     // job mapping
     jobTab: {},
+  awsLog: [],
 
     // Tab actions
     newTab: (initial) => {
@@ -302,6 +320,10 @@ export const useStore = create<State & Actions>((set, get) => {
         get().registerJobForActiveTab(res.jobId)
       }
     }
+    ,
+    // AWS log mutations
+    addAwsLog: (entry) => set(s => ({ awsLog: [...s.awsLog, entry].slice(-1000) })),
+    clearAwsLog: () => set({ awsLog: [] })
   }
 })
 
@@ -338,6 +360,22 @@ export const useStore = create<State & Actions>((set, get) => {
           if (tabId === ss.activeTabId) patch.transfers = transfers
           return patch
         })
+      })
+    } catch {}
+  }
+})()()
+
+// Global AWS events subscription: capture S3/xfer events for the log
+;(function initAwsEventLogging() {
+  let initialized = false
+  return () => {
+    if (initialized) return
+    initialized = true
+    try {
+      const api: any = (window as any).api
+      if (!api?.log?.onAwsEvent) return
+      api.log.onAwsEvent((evt: any) => {
+        try { useStore.getState().addAwsLog(evt) } catch {}
       })
     } catch {}
   }

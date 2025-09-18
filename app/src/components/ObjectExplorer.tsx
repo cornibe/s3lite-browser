@@ -123,13 +123,14 @@ export default function ObjectExplorer() {
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<number | undefined>(undefined)
   const copyBtnRef = useRef<HTMLButtonElement | null>(null)
+  const uploadInputRef = useRef<HTMLInputElement | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
   const ctxMenuRef = useRef<HTMLDivElement | null>(null)
   const [showProps, setShowProps] = useState<{ type: 'object' | 'folder'; data: any } | null>(null)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
-    item: Entry
+    items: Entry[]
     title: string
     message: string
   } | null>(null)
@@ -137,6 +138,10 @@ export default function ObjectExplorer() {
   const [objectFilter, setObjectFilter] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'lastModified'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  // Multi-select state (local to explorer)
+  const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set())
+  const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
 
   // Reset prefix and selection when disconnected to avoid stale UI
   // Bucket selection elsewhere (store.selectBucket) already clears prefix by default.
@@ -185,6 +190,13 @@ export default function ObjectExplorer() {
     }
     return entries
   }, [data])
+
+  const keyOf = (it: Entry) => it.type === 'object' ? `o:${(it as any).data.key}` : `f:${(it as any).data.prefix}`
+  const keyToEntry = useMemo(() => {
+    const m = new Map<string, Entry>()
+    for (const it of items) m.set(keyOf(it), it)
+    return m
+  }, [items])
 
   // Helpers for filter/sort
   const getName = (it: Entry) =>
@@ -245,27 +257,61 @@ export default function ObjectExplorer() {
     }
   }, [bucket, isFetching, isFetchingNextPage, isLoading, connectionError, showRefreshOverlay])
 
+  // Clear local multi-selection when prefix changes
+  useEffect(() => {
+    setSelectedSet(new Set())
+    setAnchorIndex(null)
+    setFocusedIndex(null)
+  }, [prefix])
+
   function onDoubleClick(item: Entry) {
     if (item.type === 'folder') { trace('ui', 'open folder', { prefix: item.data.prefix }); setPrefix(item.data.prefix) }
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (!visibleItems.length) return
-    const idx = visibleItems.findIndex(it => it.type === 'object' ? it.data.key === selectedKey : it.data.prefix === selectedKey)
+    const currentIdx = focusedIndex ?? visibleItems.findIndex(it => it.type === 'object' ? it.data.key === selectedKey : it.data.prefix === selectedKey)
     if (e.key === 'ArrowDown') {
-      const next = Math.min((idx < 0 ? 0 : idx + 1), visibleItems.length - 1)
+      const next = Math.min((currentIdx < 0 ? 0 : currentIdx + 1), visibleItems.length - 1)
       const it = visibleItems[next]
+      if (e.shiftKey) {
+        const from = (anchorIndex ?? (currentIdx < 0 ? next : currentIdx))
+        const [lo, hi] = from <= next ? [from, next] : [next, from]
+        const newSet = new Set<string>()
+        for (let i = lo; i <= hi; i++) newSet.add(keyOf(visibleItems[i]))
+        setSelectedSet(newSet)
+        setFocusedIndex(next)
+        setAnchorIndex(from)
+      } else {
+        setSelectedSet(new Set([keyOf(it)]))
+        setAnchorIndex(next)
+        setFocusedIndex(next)
+      }
       setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
       setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
       e.preventDefault()
     } else if (e.key === 'ArrowUp') {
-      const prev = Math.max((idx < 0 ? 0 : idx - 1), 0)
+      const prev = Math.max((currentIdx < 0 ? 0 : currentIdx - 1), 0)
       const it = visibleItems[prev]
+      if (e.shiftKey) {
+        const from = (anchorIndex ?? (currentIdx < 0 ? prev : currentIdx))
+        const [lo, hi] = from <= prev ? [from, prev] : [prev, from]
+        const newSet = new Set<string>()
+        for (let i = lo; i <= hi; i++) newSet.add(keyOf(visibleItems[i]))
+        setSelectedSet(newSet)
+        setFocusedIndex(prev)
+        setAnchorIndex(from)
+      } else {
+        setSelectedSet(new Set([keyOf(it)]))
+        setAnchorIndex(prev)
+        setFocusedIndex(prev)
+      }
       setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
       setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
       e.preventDefault()
     } else if (e.key === 'Enter') {
-      const it = visibleItems[Math.max(idx, 0)]
+      const idx = Math.max(currentIdx, 0)
+      const it = visibleItems[idx]
       if (it && it.type === 'folder') { trace('ui', 'kb open folder', { prefix: it.data.prefix }); setPrefix(it.data.prefix) }
     }
   }
@@ -362,6 +408,24 @@ export default function ObjectExplorer() {
     }
   }
 
+  async function onUploadFilesSelected(files: FileList | null) {
+    if (!bucket) return
+    if (!files || files.length === 0) return
+    try {
+      const fileArr = Array.from(files)
+      const processedFiles = await (window as any).api.ui.processDroppedFiles(fileArr)
+      if (!processedFiles || processedFiles.length === 0) return
+      const targetPrefix = selectedKey && items.find(it => it.type === 'folder' && it.data.prefix === selectedKey) ? selectedKey : prefix
+      const res = await (window as any).api.transfers.startUpload({ bucket, prefix: targetPrefix, files: processedFiles })
+      if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
+    } catch (e) {
+      console.error('upload failed', e)
+    } finally {
+      // Reset input so selecting the same file again triggers onChange
+      try { if (uploadInputRef.current) uploadInputRef.current.value = '' } catch {}
+    }
+  }
+
   function onContextMenu(e: React.MouseEvent, item: Entry) {
     e.preventDefault()
     setSelected(item.type === 'object' ? item.data.key : item.data.prefix, item.type)
@@ -389,17 +453,27 @@ export default function ObjectExplorer() {
   }, [contextMenu])
 
   async function handleDownload(item?: Entry) {
-    const it = item || (items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey))
-    if (!it) return
+    // If explicit item provided, download just that one; otherwise prefer multi-select if present
+    const selectedKeys = item ? [keyOf(item)] : Array.from(selectedSet)
+    let entries: Entry[]
+    if (selectedKeys.length > 0) {
+      entries = selectedKeys.map(k => keyToEntry.get(k)!).filter(Boolean)
+    } else {
+      const it = items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
+      if (!it) return
+      entries = [it]
+    }
     try {
-      const dest = await (window as any).api.ui.pickDirectory({ title: 'Select download folder' })
+      const dest = await (window as any).api.ui.pickDirectory({ title: entries.length > 1 ? `Select download folder (${entries.length} items)` : 'Select download folder' })
       if (!dest) return
-      if (it.type === 'folder') {
-        const res = await (window as any).api.transfers.startPrefixDownload({ bucket, prefix: it.data.prefix, destDir: dest })
-        if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
-      } else {
-        const res = await (window as any).api.transfers.startObjectDownload({ bucket, key: it.data.key, destDir: dest })
-        if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
+      for (const ent of entries) {
+        if (ent.type === 'folder') {
+          const res = await (window as any).api.transfers.startPrefixDownload({ bucket, prefix: ent.data.prefix, destDir: dest })
+          if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
+        } else {
+          const res = await (window as any).api.transfers.startObjectDownload({ bucket, key: ent.data.key, destDir: dest })
+          if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
+        }
       }
     } finally {
       setContextMenu(null)
@@ -426,40 +500,49 @@ export default function ObjectExplorer() {
   const handleDelete = (item: Entry) => {
     const isFolder = item.type === 'folder'
     const name = isFolder ? item.data.prefix : item.data.key
-    
     setDeleteConfirmation({
-      item,
+      items: [item],
       title: `Delete ${isFolder ? 'Folder' : 'File'}`,
       message: `Are you sure you want to delete "${name}"?${isFolder ? ' This will delete all objects in the folder.' : ''}`
     })
     setContextMenu(null)
   }
 
+  const handleDeleteSelected = () => {
+    const keys = Array.from(selectedSet)
+    if (keys.length === 0) return
+    const entries = keys.map(k => keyToEntry.get(k)!).filter(Boolean)
+    const fileCount = entries.filter(e => e.type === 'object').length
+    const folderCount = entries.filter(e => e.type === 'folder').length
+    const title = `Delete ${keys.length} selected item${keys.length > 1 ? 's' : ''}`
+    const message = `Are you sure you want to delete ${keys.length} item${keys.length > 1 ? 's' : ''}?` + (folderCount > 0 ? ` This includes ${folderCount} folder${folderCount > 1 ? 's' : ''}, which will delete all contained objects.` : '')
+    setDeleteConfirmation({ items: entries, title, message })
+  }
+
   const confirmDelete = async () => {
     if (!deleteConfirmation) return
-    
-    const { item } = deleteConfirmation
-    
-    if (item.type === 'folder') {
-      const result = await (window as any).api.s3.deleteFolder({ bucket, prefix: item.data.prefix })
-      if (!result.ok) {
-        throw new Error(result.error)
-      }
-    } else {
-      const result = await (window as any).api.s3.deleteObject({ bucket, key: item.data.key })
-      if (!result.ok) {
-        throw new Error(result.error)
-      }
+    const { items: delItems } = deleteConfirmation
+    const objKeys: string[] = []
+    const folders: string[] = []
+    for (const it of delItems) {
+      if (it.type === 'object') objKeys.push(it.data.key)
+      else folders.push(it.data.prefix)
     }
-    
-    // Clear selection if we deleted the selected item
-    const deletedKey = item.type === 'object' ? item.data.key : item.data.prefix
-    if (selectedKey === deletedKey) {
-  setSelected(undefined, undefined)
-  setSelectedDetails(undefined)
+    // Delete objects in bulk if any
+    if (objKeys.length > 0) {
+      const result = await (window as any).api.s3.deleteObjects({ bucket, keys: objKeys })
+      if (!result.ok) throw new Error(result.error)
     }
-    
-    // Refresh the object list
+    // Delete folders individually (API is per-folder)
+    for (const p of folders) {
+      const result = await (window as any).api.s3.deleteFolder({ bucket, prefix: p })
+      if (!result.ok) throw new Error(result.error)
+    }
+    // Clear selection if necessary
+    setSelected(undefined, undefined)
+    setSelectedDetails(undefined)
+    setSelectedSet(new Set())
+    // Refresh list
     await refetch()
   }
 
@@ -487,7 +570,7 @@ export default function ObjectExplorer() {
 
   return (
     <div className="flex-1 flex flex-col bg-panel" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
-      <div className="border-b border-default px-3 py-2 flex items-center gap-2 text-sm bg-header text-app">
+  <div className="border-b border-default px-3 py-2 flex items-center gap-2 text-sm bg-header text-app">
         {bucket ? (
           <>
             <div className="relative">
@@ -579,6 +662,13 @@ export default function ObjectExplorer() {
                 ↻ Refresh
               </button>
               <button
+                onClick={() => uploadInputRef.current?.click()}
+                className="text-xs px-2 py-1 bg-[#2d7d46] text-white rounded hover:bg-[#2fa866] transition-colors cursor-pointer"
+                title="Upload files to this location"
+              >
+                ↑ Upload
+              </button>
+              <button
                 onClick={() => setShowCreateFolder(true)}
                 className="text-xs px-2 py-1 bg-[#16a085] text-white rounded hover:bg-[#1abc9c] transition-colors cursor-pointer"
                 title="Create new folder"
@@ -594,14 +684,31 @@ export default function ObjectExplorer() {
                   }
                 }}
                 className="text-xs px-2 py-1 bg-[#8e44ad] text-white rounded hover:bg-[#9b59b6] transition-colors disabled:opacity-50 cursor-pointer"
-                title="Download selected item"
-                disabled={!selectedKey}
+                title={selectedSet.size > 1 ? `Download ${selectedSet.size} selected items` : 'Download selected item'}
+                disabled={selectedSet.size === 0 && !selectedKey}
               >
-                ↓ Download
+                ↓ Download{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedSet.size > 1) {
+                    handleDeleteSelected()
+                  } else if (selectedKey) {
+                    const entry = items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
+                    if (entry) handleDelete(entry)
+                  }
+                }}
+                className="text-xs px-2 py-1 bg-[#b33939] text-white rounded hover:bg-[#c0392b] transition-colors disabled:opacity-50 cursor-pointer"
+                title={selectedSet.size > 1 ? `Delete ${selectedSet.size} selected items` : 'Delete selected item'}
+                disabled={selectedSet.size === 0 && !selectedKey}
+              >
+                🗑 Delete{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
               </button>
             </>
           )}
     {prefix && <button className="text-xs underline cursor-pointer link-accent" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
+  {/* Hidden file input for uploads */}
+  <input ref={uploadInputRef} type="file" multiple className="hidden" onChange={(e) => onUploadFilesSelected(e.target.files)} />
         </div>
       </div>
 
@@ -612,6 +719,9 @@ export default function ObjectExplorer() {
           trace('ui', 'deselect on background click')
           setSelected(undefined, undefined)
           setSelectedDetails(undefined)
+          setSelectedSet(new Set())
+          setAnchorIndex(null)
+          setFocusedIndex(null)
         }
       }}>
         {showRefreshOverlay && (
@@ -703,10 +813,39 @@ export default function ObjectExplorer() {
               }
             }}>
               {visibleItems.map((it, i) => {
-                const isSel = (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey
+                const rowKey = keyOf(it)
+                const isSel = selectedSet.has(rowKey)
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
-  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={() => { trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix }); setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type); setSelectedDetails(it.type === 'object' ? { type: 'object', object: it.data } : { type: 'folder', folder: it.data }) }} onContextMenu={(e) => onContextMenu(e, it)}>
+  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={(e) => {
+                      const key = rowKey
+                      const isMeta = (e as any).metaKey
+                      if (e.shiftKey) {
+                        // Range select from anchor to i
+                        const from = anchorIndex ?? i
+                        const [lo, hi] = from <= i ? [from, i] : [i, from]
+                        const newSet = new Set<string>()
+                        for (let j = lo; j <= hi; j++) newSet.add(keyOf(visibleItems[j]))
+                        setSelectedSet(newSet)
+                        setFocusedIndex(i)
+                        setAnchorIndex(from)
+                      } else if (e.ctrlKey || isMeta) {
+                        // Toggle
+                        const newSet = new Set(selectedSet)
+                        if (newSet.has(key)) newSet.delete(key); else newSet.add(key)
+                        setSelectedSet(newSet)
+                        setFocusedIndex(i)
+                        if (anchorIndex === null) setAnchorIndex(i)
+                      } else {
+                        // Single select
+                        setSelectedSet(new Set([key]))
+                        setAnchorIndex(i)
+                        setFocusedIndex(i)
+                      }
+                      trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix })
+                      setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
+                      setSelectedDetails(it.type === 'object' ? { type: 'object', object: it.data } : { type: 'folder', folder: it.data })
+                    }} onContextMenu={(e) => onContextMenu(e, it)}>
                     <td className="px-3 py-2 font-medium">
                       <div className="flex items-center gap-2">
                         {it.type === 'folder' ? (
@@ -788,7 +927,8 @@ export default function ObjectExplorer() {
         onConfirm={confirmDelete}
         title={deleteConfirmation?.title || ''}
         message={deleteConfirmation?.message || ''}
-        itemType={deleteConfirmation?.item.type === 'folder' ? 'folder' : 'file'}
+        itemCount={deleteConfirmation?.items?.length || 0}
+        itemType={deleteConfirmation?.items && deleteConfirmation.items.length > 1 ? 'files' : (deleteConfirmation?.items?.[0]?.type === 'folder' ? 'folder' : 'file')}
       />
     </div>
   )
