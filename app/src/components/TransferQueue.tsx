@@ -189,7 +189,31 @@ export default function TransferQueue() {
 
   return (
     <div className={`p-2 border-t text-sm flex-none overflow-x-hidden overflow-y-auto h-full border-default bg-header`}>
-      <div className="font-semibold mb-2">Transfer Queue</div>
+      <div className="flex items-center mb-2">
+        <div className="font-semibold">Transfer Queue</div>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334]"
+            title="Clear finished (completed/failed/canceled)"
+            onClick={() => {
+              // Remove terminal jobs and their items
+              const newJobs: Record<string, any> = {}
+              for (const j of jobs) {
+                const isTerminal = j.status === 'completed' || j.status === 'failed' || j.status === 'canceled'
+                if (!isTerminal) newJobs[j.id] = j
+              }
+              const newItems: Record<string, any> = {}
+              for (const it of allItems) {
+                const job = newJobs[it.jobId]
+                if (job) newItems[it.id] = it
+              }
+              setTransfers({ jobs: newJobs, items: newItems })
+            }}
+          >
+            Clear finished
+          </button>
+        </div>
+      </div>
       {jobs.length === 0 && <div className="opacity-60">No transfers.</div>}
 
       {activeJobs.length > 0 && (

@@ -10,7 +10,7 @@ export default function SidebarBuckets() {
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
   const [profiles, setProfiles] = useState<{ name: string; isSso?: boolean }[]>([])
   const [refreshingProfiles, setRefreshingProfiles] = useState(false)
-  const [profileCollapsed, setProfileCollapsed] = useState<boolean>(Boolean(profile))
+  const [profileCollapsed, setProfileCollapsed] = useState<boolean>(false)
   const [showCreateBucket, setShowCreateBucket] = useState(false)
   const [showMountModal, setShowMountModal] = useState(false)
   const [bucketFilter, setBucketFilter] = useState('')
@@ -19,11 +19,11 @@ export default function SidebarBuckets() {
   const mountMenuRef = useRef<HTMLDivElement | null>(null)
   // Profiles at the top of sidebar
   useEffect(() => { void refreshProfiles() }, [])
-  // On tab change, default to expanded if this tab has no profile yet; collapse if it does
+  // Keep Profile section expanded on new tab
   useEffect(() => {
-    setProfileCollapsed(Boolean(profile))
+    setProfileCollapsed(false)
   }, [activeTabId])
-  useEffect(() => { if (profile) setProfileCollapsed(true) }, [profile])
+  // Do not auto-collapse when profile changes; leave as user preference
   async function refreshProfiles() {
     setRefreshingProfiles(true)
     try {
@@ -113,7 +113,7 @@ export default function SidebarBuckets() {
   const dark = Boolean(settings?.darkMode)
   return (
     <div className={`h-full overflow-y-auto bg-header text-app`}>
-      <div className={`px-3 ${profileCollapsed ? 'py-1' : 'py-2'} border-b border-default space-y-2`}>
+  <div className={`px-3 py-2 border-b border-default space-y-2`}>
         {/* Profile header: collapsible */}
         <div
           className={`flex items-center gap-2 ${profileCollapsed ? 'cursor-pointer' : ''}`}
@@ -142,7 +142,7 @@ export default function SidebarBuckets() {
             <select
               className={`h-7 px-2 rounded border text-sm input-theme cursor-pointer flex-1`}
               value={profile ?? ''}
-              onChange={(e) => { const next = e.target.value || undefined; setProfile(next); selectBucket(undefined); if (next) { void connect(next); setProfileCollapsed(true) } }}
+              onChange={(e) => { const next = e.target.value || undefined; setProfile(next); selectBucket(undefined); if (next) { void connect(next) } }}
             >
               <option value="">(none)</option>
               {profiles.map(p => (

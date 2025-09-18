@@ -192,18 +192,6 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
           </div>
         </div>
       </div>
-      <div>
-        <div className="font-semibold mb-1">Metadata</div>
-        <div className="rounded border border-default">
-          <div className="p-3 opacity-70">Metadata loading not implemented.</div>
-        </div>
-      </div>
-      <div>
-        <div className="font-semibold mb-1">Tags</div>
-        <div className="rounded border border-default">
-          <div className="p-3 opacity-70">Tags loading not implemented.</div>
-        </div>
-      </div>
     </div>
   )
 }

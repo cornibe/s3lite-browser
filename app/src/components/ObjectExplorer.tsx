@@ -126,6 +126,9 @@ export default function ObjectExplorer() {
   const copyTimer = useRef<number | undefined>(undefined)
   const copyBtnRef = useRef<HTMLButtonElement | null>(null)
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
+  // Drop/upload feedback toast
+  const [dropFeedback, setDropFeedback] = useState<{ stage: 'preparing' | 'starting' | 'queued' | 'error'; message: string } | null>(null)
+  const dropFeedbackTimer = useRef<number | undefined>(undefined)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
   const ctxMenuRef = useRef<HTMLDivElement | null>(null)
@@ -145,6 +148,14 @@ export default function ObjectExplorer() {
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
 
+  // Ensure UI has a chance to paint before continuing heavy work
+  const yieldToPaint = async () => {
+    // Two rafs + short timeout helps on Electron where single RAF can be coalesced
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => setTimeout(r, 0))
+  }
+
   // Refs to latest values for global drop handlers (avoid stale closure)
   const bucketRef = useRef(bucket)
   const prefixRef = useRef(prefix)
@@ -155,6 +166,10 @@ export default function ObjectExplorer() {
   useEffect(() => { prefixRef.current = prefix }, [prefix])
   useEffect(() => { selectedKeyRef.current = selectedKey }, [selectedKey])
   useEffect(() => { registerJobRef.current = registerJobForActiveTab }, [registerJobForActiveTab])
+  // Cleanup feedback timer on unmount
+  useEffect(() => {
+    return () => { if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current) }
+  }, [])
 
   // Reset prefix and selection when disconnected to avoid stale UI
   // Bucket selection elsewhere (store.selectBucket) already clears prefix by default.
@@ -357,6 +372,11 @@ export default function ObjectExplorer() {
 
     if (fileList.length === 0) { trace('ui', 'drop no files'); return }
 
+  // Immediate user feedback: preparing files
+  const prepMsg = `Preparing ${fileList.length} ${fileList.length === 1 ? 'file' : 'files'}…`
+  setDropFeedback({ stage: 'preparing', message: prepMsg })
+  await yieldToPaint()
+
     // Extract file metadata - add debugging to see what's available
     const fileData = fileList.map((f, i) => {
       const fileObj = f as any
@@ -379,7 +399,14 @@ export default function ObjectExplorer() {
 
     try {
       const processedFiles = await (window as any).api.ui.processDroppedFiles(fileList)
-      if (processedFiles.length === 0) { info('ui', 'drop user canceled file selection'); return }
+      if (processedFiles.length === 0) {
+        info('ui', 'drop user canceled file selection')
+        // Hide feedback quickly if cancelled
+        setDropFeedback(null)
+        return
+      }
+  setDropFeedback({ stage: 'starting', message: `Starting upload of ${processedFiles.length} ${processedFiles.length === 1 ? 'file' : 'files'}…` })
+  await yieldToPaint()
       info('ui', 'drop processed files', {
         count: processedFiles.length,
         withPath: processedFiles.filter((f: any) => f.path).length,
@@ -390,12 +417,21 @@ export default function ObjectExplorer() {
       const res = await (window as any).api.transfers.startUpload({ bucket: bkt, prefix: targetPrefix, files: processedFiles })
       if (!res?.ok) {
         info('ui', 'upload failed to start', { error: res?.error || 'unknown' })
+        setDropFeedback({ stage: 'error', message: `Failed to start upload: ${res?.error || 'unknown'}` })
+        if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current)
+        dropFeedbackTimer.current = window.setTimeout(() => setDropFeedback(null), 3000)
       } else {
         info('ui', 'upload job created', { jobId: res.jobId })
         registerJobRef.current(res.jobId)
+        setDropFeedback({ stage: 'queued', message: `Upload queued • ${processedFiles.length} ${processedFiles.length === 1 ? 'file' : 'files'}` })
+        if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current)
+        dropFeedbackTimer.current = window.setTimeout(() => setDropFeedback(null), 1500)
       }
     } catch (error) {
       trace('ui', 'drop error', { error: (error as Error)?.message || 'unknown' })
+      setDropFeedback({ stage: 'error', message: `Error preparing files: ${(error as Error)?.message || 'unknown'}` })
+      if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current)
+      dropFeedbackTimer.current = window.setTimeout(() => setDropFeedback(null), 3000)
     }
   }
 
@@ -487,8 +523,9 @@ export default function ObjectExplorer() {
         ;(fileList as any).forEach((f: any, i: number) => { f.path = paths[i] })
       }
     }
-    info('ui', 'react drop processing files', { count: fileList.length })
-    await startUploadFromFileList(fileList)
+  info('ui', 'react drop processing files', { count: fileList.length })
+  // Fire-and-forget so the event can return and UI can paint feedback sooner
+  void startUploadFromFileList(fileList)
   }
 
   // Add global dragover/drop listeners to prevent Electron navigation and
@@ -906,6 +943,14 @@ export default function ObjectExplorer() {
           setFocusedIndex(null)
         }
       }}>
+        {/* Drop/upload feedback toast */}
+        {dropFeedback && (
+          <div className="pointer-events-none absolute top-3 right-3 z-20">
+            <div className={`px-3 py-2 rounded shadow border text-sm menu-bg border-default ${dropFeedback.stage === 'error' ? 'text-red-600 dark:text-red-400' : 'text-app'}`}>
+              {dropFeedback.message}
+            </div>
+          </div>
+        )}
         {showRefreshOverlay && (
           <div className="absolute inset-0 z-10 flex items-center justify-center overlay-bg pointer-events-none">
             <svg className="h-8 w-8 animate-spin text-[#0e639c] dark:text-[#3794ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
