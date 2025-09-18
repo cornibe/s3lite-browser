@@ -273,6 +273,30 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
   )
 }
 
+// Move Field component outside to prevent recreation on each render
+function Field({ k, label, placeholder, type: inputType = 'text', vals, setVals }: { 
+  k: string; 
+  label: string; 
+  placeholder?: string; 
+  type?: string;
+  vals: Record<string, string>;
+  setVals: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium mb-1">{label}</label>
+      <input
+        className="w-full px-2 py-1 rounded border text-sm input-theme"
+        value={vals[k] || ''}
+        placeholder={placeholder}
+        onKeyDown={(e) => e.stopPropagation()}
+        onChange={e => setVals(s => ({ ...s, [k]: e.target.value }))}
+        type={inputType}
+      />
+    </div>
+  )
+}
+
 function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, onSave }: { name: string; initial: Record<string, string>; sourceOptions?: string[]; onCancel: () => void; onSave: (vals: Record<string, string>) => void | Promise<void> }) {
   const inferType = (v: Record<string, string>): ProfileType => {
     if (v.role_arn) return 'assume-role'
@@ -310,20 +334,6 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
     await onSave(out)
   }
 
-  const Field = ({ k, label, placeholder, type: inputType = 'text' }: { k: keyof typeof vals; label: string; placeholder?: string; type?: string }) => (
-    <div>
-      <label className="block text-sm font-medium mb-1">{label}</label>
-      <input
-        className="w-full px-2 py-1 rounded border text-sm input-theme"
-        value={vals[k] || ''}
-        placeholder={placeholder}
-        onKeyDown={(e) => e.stopPropagation()}
-        onChange={e => setVals(s => ({ ...s, [k]: e.target.value }))}
-        type={inputType}
-      />
-    </div>
-  )
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={(e) => e.stopPropagation()}>
       <div className="absolute inset-0 bg-black/40" onClick={() => !busy && onCancel()} />
@@ -335,20 +345,20 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
           <label className="flex items-center gap-2"><input type="radio" name="ptype" checked={type==='assume-role'} onChange={() => setType('assume-role')} /> Assume role</label>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field k="region" label="region" placeholder="e.g. us-east-1" />
+          <Field k="region" label="region" placeholder="e.g. us-east-1" vals={vals} setVals={setVals} />
           {type !== 'assume-role' && (
             <>
-              <Field k="aws_access_key_id" label="aws_access_key_id" />
-              <Field k="aws_secret_access_key" label="aws_secret_access_key" />
+              <Field k="aws_access_key_id" label="aws_access_key_id" vals={vals} setVals={setVals} />
+              <Field k="aws_secret_access_key" label="aws_secret_access_key" vals={vals} setVals={setVals} />
             </>
           )}
           {type === 'temp' && (
-            <Field k="aws_session_token" label="aws_session_token" />
+            <Field k="aws_session_token" label="aws_session_token" vals={vals} setVals={setVals} />
           )}
           {type === 'assume-role' && (
             <>
-              <Field k="role_arn" label="role_arn" placeholder="arn:aws:iam::123456789012:role/RoleName" />
-              <Field k="credential_source" label="credential_source" placeholder="Env or Ec2InstanceMetadata" />
+              <Field k="role_arn" label="role_arn" placeholder="arn:aws:iam::123456789012:role/RoleName" vals={vals} setVals={setVals} />
+              <Field k="credential_source" label="credential_source" placeholder="Env or Ec2InstanceMetadata" vals={vals} setVals={setVals} />
               <div>
                 <label className="block text-sm font-medium mb-1">source_profile</label>
                 <select className="w-full px-2 py-1 rounded border text-sm input-theme"
