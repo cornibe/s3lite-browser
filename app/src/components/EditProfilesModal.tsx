@@ -109,6 +109,8 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
   }, [credsRaw, configRaw, paths])
   
   const [query, setQuery] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [renaming, setRenaming] = useState(null as { from: string } | null)
   const filteredProfiles = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return profiles
@@ -178,6 +180,34 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
 
   function openEdit() { if (selected) setEditing({ name: selected }) }
   function openEditFor(name: string) { setSelected(name); setEditing({ name }) }
+  function openCreate() { setCreating(true) }
+  function openRename() { if (selected) setRenaming({ from: selected }) }
+
+  function renameProfile(from: string, to: string): { credentialsText: string; configText: string } {
+    const creds = parseIni(credsRaw)
+    const cfg = parseIni(configRaw)
+    const fromShort = from.startsWith('profile ') ? from.slice('profile '.length) : from
+    const toShort = to.startsWith('profile ') ? to.slice('profile '.length) : to
+    const fromCfg = `profile ${fromShort}`
+    const toCfg = `profile ${toShort}`
+
+    if (fromShort !== toShort) {
+      if (creds[fromShort]) {
+        creds[toShort] = { ...creds[fromShort] }
+        delete creds[fromShort]
+      }
+      if (cfg[fromCfg]) {
+        cfg[toCfg] = { ...cfg[fromCfg] }
+        delete cfg[fromCfg]
+      }
+    }
+    const newCreds = stringifyIni(creds)
+    const newCfg = stringifyIni(cfg)
+    logInfo('profiles', 'rename applied', { from: fromShort, to: toShort, credsBytes: newCreds.length, cfgBytes: newCfg.length })
+    setCredsRaw(newCreds)
+    setConfigRaw(newCfg)
+    return { credentialsText: newCreds, configText: newCfg }
+  }
 
   // Using native selection highlight; no overlay parts needed
 
@@ -318,7 +348,9 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
             </div>
             <div className="col-span-2 flex flex-col min-h-0">
               <div className="flex items-center gap-2 mb-2">
-                <button className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] disabled:opacity-50" disabled={!selected} onClick={openEdit}>Edit entry…</button>
+                <button className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb]" onClick={openCreate}>New profile…</button>
+                <button className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] disabled:opacity-50" disabled={!selected} onClick={openEdit}>Edit…</button>
+                <button className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] disabled:opacity-50" disabled={!selected} onClick={openRename}>Rename…</button>
               </div>
               <div className="relative flex-1 min-h-0">
                 <textarea
@@ -350,6 +382,48 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
             const updated = applyEdit(editing.name, vals)
             await saveEntryToDisk(updated)
             setEditing(null)
+          }}
+        />
+      )}
+
+      {creating && (
+        <CreateProfileModal
+          existing={new Set(profiles)}
+          sourceOptions={profiles}
+          onCancel={() => setCreating(false)}
+          onCreate={async ({ name, values }) => {
+            if (!name) return
+            if ((new Set(profiles)).has(name)) {
+              setError(`Profile "${name}" already exists`)
+              return
+            }
+            logInfo('profiles', 'create begin', { name })
+            const updated = applyEdit(name, values)
+            await saveEntryToDisk(updated)
+            setCreating(false)
+            setSelected(name)
+          }}
+        />
+      )}
+
+      {renaming && (
+        <RenameProfileModal
+          from={renaming.from}
+          existing={new Set(profiles)}
+          onCancel={() => setRenaming(null)}
+          onRename={async (to) => {
+            if (!to || to === renaming.from) { setRenaming(null); return }
+            if ((new Set(profiles)).has(to)) { setError(`Profile "${to}" already exists`); return }
+            try {
+              const out = renameProfile(renaming.from, to)
+              await saveEntryToDisk(out)
+              setRenaming(null)
+              setSelected(to)
+            } catch (e) {
+              const msg = (e as Error)?.message || 'Rename failed'
+              setError(msg)
+              logError('profiles', 'rename failed', { error: msg })
+            }
           }}
         />
       )}
@@ -467,3 +541,138 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
     </div>
   )
 }
+
+function CreateProfileModal({ existing, sourceOptions = [], onCancel, onCreate }: { existing: Set<string>; sourceOptions?: string[]; onCancel: () => void; onCreate: (p: { name: string; values: Record<string, string> }) => void | Promise<void> }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('standard' as ProfileType)
+  const [vals, setVals] = useState({
+    region: '',
+    aws_access_key_id: '',
+    aws_secret_access_key: '',
+    aws_session_token: '',
+    role_arn: '',
+    source_profile: '',
+    credential_source: ''
+  })
+  const [err, setErr] = useState(undefined as string | undefined)
+  const [busy, setBusy] = useState(false)
+
+  function sanitizeName(raw: string): string {
+    let n = (raw || '').trim()
+    if (n.startsWith('profile ')) n = n.slice('profile '.length).trim()
+    if (/^\[.*\]$/.test(n)) n = n.slice(1, -1).trim()
+    return n
+  }
+
+  async function doCreate() {
+    const n = sanitizeName(name)
+    if (!n) { setErr('Name is required'); return }
+    if (n.startsWith('sso-session ')) { setErr('Name cannot start with "sso-session "'); return }
+    if (existing.has(n)) { setErr(`Profile "${n}" already exists`); return }
+    // minimal validation: require at least one field
+  const hasAny = Object.values(vals).some(v => ((v as string) || '').trim() !== '')
+    if (!hasAny) { setErr('Please fill at least one field'); return }
+    setErr(undefined)
+    setBusy(true)
+    try {
+      await onCreate({ name: n, values: vals })
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={(e) => e.stopPropagation()}>
+      <div className="absolute inset-0 bg-black/40" onClick={() => !busy && onCancel()} />
+      <div className="relative menu-bg border border-default rounded shadow-xl w-[720px] max-w-[95vw] p-4">
+        <div className="text-lg font-semibold mb-3">New profile</div>
+        <div className="mb-3">
+          <label className="block text-sm font-medium mb-1">Name</label>
+          <input className="w-full px-2 py-1 rounded border text-sm input-theme" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. myprofile" />
+        </div>
+        <div className="mb-3 flex gap-4 items-center text-sm">
+          <label className="flex items-center gap-2"><input type="radio" name="ptype_new" checked={type==='standard'} onChange={() => setType('standard')} /> Standard</label>
+          <label className="flex items-center gap-2"><input type="radio" name="ptype_new" checked={type==='temp'} onChange={() => setType('temp')} /> Temp credentials</label>
+          <label className="flex items-center gap-2"><input type="radio" name="ptype_new" checked={type==='assume-role'} onChange={() => setType('assume-role')} /> Assume role</label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field k="region" label="region" placeholder="e.g. us-east-1" vals={vals} setVals={setVals} />
+          {type !== 'assume-role' && (
+            <>
+              <Field k="aws_access_key_id" label="aws_access_key_id" vals={vals} setVals={setVals} />
+              <Field k="aws_secret_access_key" label="aws_secret_access_key" vals={vals} setVals={setVals} />
+            </>
+          )}
+          {type === 'temp' && (
+            <Field k="aws_session_token" label="aws_session_token" vals={vals} setVals={setVals} />
+          )}
+          {type === 'assume-role' && (
+            <>
+              <Field k="role_arn" label="role_arn" placeholder="arn:aws:iam::123456789012:role/RoleName" vals={vals} setVals={setVals} />
+              <Field k="credential_source" label="credential_source" placeholder="Env or Ec2InstanceMetadata" vals={vals} setVals={setVals} />
+              <div>
+                <label className="block text-sm font-medium mb-1">source_profile</label>
+                <select className="w-full px-2 py-1 rounded border text-sm input-theme"
+                  onKeyDown={(e) => e.stopPropagation()}
+                  value={vals.source_profile || ''}
+                  onChange={e => setVals(s => ({ ...s, source_profile: e.target.value }))}
+                >
+                  <option value="">(none)</option>
+                  {sourceOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+        </div>
+        {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="btn btn-secondary" disabled={busy} onClick={onCancel}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy} onClick={doCreate}>Create</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RenameProfileModal({ from, existing, onCancel, onRename }: { from: string; existing: Set<string>; onCancel: () => void; onRename: (to: string) => void | Promise<void> }) {
+  const [to, setTo] = useState(from)
+  const [err, setErr] = useState(undefined as string | undefined)
+  const [busy, setBusy] = useState(false)
+
+  function sanitizeName(raw: string): string {
+    let n = (raw || '').trim()
+    if (n.startsWith('profile ')) n = n.slice('profile '.length).trim()
+    if (/^\[.*\]$/.test(n)) n = n.slice(1, -1).trim()
+    return n
+  }
+
+  async function doRename() {
+    const n = sanitizeName(to)
+    if (!n) { setErr('Name is required'); return }
+    if (n.startsWith('sso-session ')) { setErr('Name cannot start with "sso-session "'); return }
+    if (n !== from && existing.has(n)) { setErr(`Profile "${n}" already exists`); return }
+    setErr(undefined)
+    setBusy(true)
+    try { await onRename(n) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={(e) => e.stopPropagation()}>
+      <div className="absolute inset-0 bg-black/40" onClick={() => !busy && onCancel()} />
+      <div className="relative menu-bg border border-default rounded shadow-xl w-[520px] max-w-[95vw] p-4">
+        <div className="text-lg font-semibold mb-3">Rename profile</div>
+        <div className="mb-3">
+          <label className="block text-sm font-medium mb-1">New name for “{from}”</label>
+          <input className="w-full px-2 py-1 rounded border text-sm input-theme" value={to} onChange={e => setTo(e.target.value)} />
+        </div>
+        {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="btn btn-secondary" disabled={busy} onClick={onCancel}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy} onClick={doRename}>Rename</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// (renameProfile is defined within the main component to access state)

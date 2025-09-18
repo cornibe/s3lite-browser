@@ -22,12 +22,38 @@ export default function TabBar() {
   const [hoverId, setHoverId] = useState<string | null>(null)
   const items = useMemo(() => tabOrder.map((id: string) => tabs[id]).filter(Boolean), [tabs, tabOrder])
 
+  // Pre-compute how many tabs exist per profile name
+  const profileCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const t of items) {
+      const p = t?.profile as string | undefined
+      if (!p) continue
+      counts.set(p, (counts.get(p) || 0) + 1)
+    }
+    return counts
+  }, [items])
+
   return (
     <div className="flex items-center gap-1 px-2 py-1 border-b border-default bg-header text-app select-none">
       <div className="flex items-center gap-1 overflow-auto">
-        {items.map((t: any) => {
+        {(() => {
+          // Keep sequence per profile for numbering (1), (2), ...
+          const seq = new Map<string, number>()
+          return items.map((t: any) => {
           const active = t.id === activeTabId
-          const title = t.title || (t.bucket ? `${t.bucket}${t.prefix ? '/' + t.prefix : ''}` : (t.profile || 'New tab'))
+          const profile: string | undefined = t.profile
+          let title: string = 'New tab'
+          if (profile) {
+            const total = profileCounts.get(profile) || 0
+            if (total > 1) {
+              const n = (seq.get(profile) || 0) + 1
+              seq.set(profile, n)
+              title = `${profile} (${n})`
+            } else {
+              title = profile
+            }
+          }
+
           return (
             <div key={t.id} className={`group flex items-center max-w-[22rem] text-sm rounded ${active ? 'selected-row' : 'row-hover'}`}
                  onMouseEnter={() => setHoverId(t.id)} onMouseLeave={() => setHoverId(null)}>
@@ -50,7 +76,8 @@ export default function TabBar() {
               )}
             </div>
           )
-        })}
+        })
+        })()}
       </div>
       <div className="ml-auto">
         <button className="px-2 py-1 row-hover rounded inline-flex items-center gap-1 cursor-pointer" onClick={() => newTab()} aria-label="New tab">

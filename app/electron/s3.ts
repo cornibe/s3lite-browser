@@ -177,27 +177,28 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
   const creds = credsRaw ? parseIni(credsRaw) : {}
   const cfg = configRaw ? parseIni(configRaw) : {}
 
-  const out: ProfileInfo[] = []
+  const names = new Set<string>()
+  // Collect names from credentials
   for (const rawName of Object.keys(creds)) {
     const name = rawName.startsWith('profile ') ? rawName.slice('profile '.length) : rawName
+    if (name && !name.startsWith('sso-session ')) names.add(name)
+  }
+  // Collect names from config (including config-only profiles)
+  for (const rawName of Object.keys(cfg)) {
+    if (rawName.startsWith('sso-session ')) continue
+    const name = rawName.startsWith('profile ') ? rawName.slice('profile '.length) : rawName
+    if (name) names.add(name)
+  }
+
+  const out: ProfileInfo[] = []
+  for (const name of names) {
     const cfgSection = cfg['profile ' + name] || cfg[name] || {}
     const isSso = Boolean(cfgSection['sso_start_url'] || cfgSection['sso_session'])
     const item: ProfileInfo = { name }
     if (isSso) (item as any).isSso = true
     out.push(item)
   }
-  // If there were zero credentials, include config-only profiles as a fallback
-  if (out.length === 0) {
-    for (const rawName of Object.keys(cfg)) {
-      const name = rawName.startsWith('profile ') ? rawName.slice('profile '.length) : rawName
-      const cfgSection = cfg['profile ' + name] || cfg[name] || {}
-      const isSso = Boolean(cfgSection['sso_start_url'] || cfgSection['sso_session'])
-      const item: ProfileInfo = { name }
-      if (isSso) (item as any).isSso = true
-      out.push(item)
-    }
-  }
-  getLogger().debug('fs', 'listProfiles', { credsPath, configPath, count: out.length })
+  getLogger().debug('fs', 'listProfiles', { credsPath, configPath, credsCount: Object.keys(creds).length, cfgCount: Object.keys(cfg).length, outCount: out.length })
   return out
 }
 
@@ -227,9 +228,18 @@ export async function writeAwsFiles(params: { credentialsText: string; configTex
       const stat = await fs.promises.stat(p)
       if (stat.isFile()) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-')
-        await fs.promises.copyFile(p, `${p}.bak-${ts}`)
+        const awsRoot = path.dirname(p) // typically ~/.aws
+        const backupDir = path.join(awsRoot, '.backup')
+        const base = path.basename(p) // credentials or config
+        const dest = path.join(backupDir, `${base}.bak-${ts}`)
+        await fs.promises.mkdir(backupDir, { recursive: true })
+        await fs.promises.copyFile(p, dest)
+        getLogger().debug('fs', 'backup written', { src: p, dest })
       }
-    } catch {}
+    } catch (e) {
+      const msg = (e as Error)?.message || String(e)
+      getLogger().warn('fs', 'backup failed', { src: p, error: msg })
+    }
   }
   await backupIfExists(credsPath)
   await backupIfExists(configPath)
