@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useObjects } from '../lib/query'
 import { useStore } from '../lib/store'
 import type { S3ObjectItem, S3Folder, TransferEvent } from '../../electron/types'
-import { trace } from '../lib/log'
+import { trace, debug, info } from '../lib/log'
 import CreateFolderModal from './CreateFolderModal'
 import DeleteConfirmationModal from './DeleteConfirmationModal'
 
@@ -120,6 +120,8 @@ export default function ObjectExplorer() {
   const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const lastDragPointRef = useRef<{ x: number; y: number } | null>(null)
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<number | undefined>(undefined)
   const copyBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -142,6 +144,17 @@ export default function ObjectExplorer() {
   const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set())
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
+
+  // Refs to latest values for global drop handlers (avoid stale closure)
+  const bucketRef = useRef(bucket)
+  const prefixRef = useRef(prefix)
+  const selectedKeyRef = useRef<string | undefined>(selectedKey)
+  const itemsRef = useRef<Entry[]>([])
+  const registerJobRef = useRef(registerJobForActiveTab)
+  useEffect(() => { bucketRef.current = bucket }, [bucket])
+  useEffect(() => { prefixRef.current = prefix }, [prefix])
+  useEffect(() => { selectedKeyRef.current = selectedKey }, [selectedKey])
+  useEffect(() => { registerJobRef.current = registerJobForActiveTab }, [registerJobForActiveTab])
 
   // Reset prefix and selection when disconnected to avoid stale UI
   // Bucket selection elsewhere (store.selectBucket) already clears prefix by default.
@@ -190,6 +203,8 @@ export default function ObjectExplorer() {
     }
     return entries
   }, [data])
+  // Keep itemsRef in sync for global drop handler
+  useEffect(() => { itemsRef.current = items }, [items])
 
   const keyOf = (it: Entry) => it.type === 'object' ? `o:${(it as any).data.key}` : `f:${(it as any).data.prefix}`
   const keyToEntry = useMemo(() => {
@@ -320,46 +335,136 @@ export default function ObjectExplorer() {
     if (!bucket) { trace('ui', 'drag ignored no bucket'); return }
     e.preventDefault()
     try { e.dataTransfer.dropEffect = 'copy' } catch {}
-    trace('ui', 'drag over', { bucket, prefix, selectedKey })
+    trace('ui', 'react drag over', { 
+      bucket, 
+      prefix, 
+      selectedKey, 
+      target: (e.target as Element)?.tagName,
+      targetClass: (e.target as Element)?.className
+    })
   }
 
-  async function onDrop(e: React.DragEvent) {
-    if (!bucket) { trace('ui', 'drop ignored no bucket'); return }
-    e.preventDefault()
-    trace('ui', 'drop start', { bucket, prefix, selectedKey })
+  // Shared upload logic used by both React drop handler and window-level drop
+  type DropSnapshot = { bucket?: string; prefix: string; selectedKey?: string; items: Entry[] }
+  function getSnapshot(): DropSnapshot {
+    return { bucket: bucketRef.current, prefix: prefixRef.current, selectedKey: selectedKeyRef.current, items: itemsRef.current }
+  }
 
-    // Get the files from the drop event
-    const fileList = Array.from(e.dataTransfer?.files || []) as File[]
-    if (fileList.length === 0) {
-      trace('ui', 'drop no files')
-      return
-    }
+  async function startUploadFromFileList(fileList: File[], snap: DropSnapshot = getSnapshot()) {
+    const { bucket: bkt, prefix: pfx, selectedKey: sel, items: its } = snap
+    if (!bkt) { info('ui', 'drop ignored no bucket'); return }
+    info('ui', 'drop start', { bucket: bkt, prefix: pfx, selectedKey: sel })
+
+    if (fileList.length === 0) { trace('ui', 'drop no files'); return }
 
     // Extract file metadata - add debugging to see what's available
     const fileData = fileList.map((f, i) => {
       const fileObj = f as any
-      trace('ui', `file ${i} debug`, { 
-        name: f.name, 
-        size: f.size, 
+      trace('ui', `file ${i} debug`, {
+        name: f.name,
+        size: f.size,
         type: f.type,
         path: fileObj.path,
         webkitRelativePath: fileObj.webkitRelativePath,
         keys: Object.getOwnPropertyNames(fileObj)
       })
-      
-      return {
-        name: f.name,
-        path: fileObj.path || '',
-        size: f.size,
-        type: f.type
-      }
+      return { name: f.name, path: fileObj.path || '', size: f.size, type: f.type }
     })
 
+    // Debug dataTransfer types is only available in the event; skip here
+  info('ui', 'drop files detected', {
+      count: fileData.length,
+      files: fileData.map(f => ({ name: f.name, size: f.size, hasPath: Boolean(f.path), path: f.path }))
+    })
+
+    try {
+      const processedFiles = await (window as any).api.ui.processDroppedFiles(fileList)
+      if (processedFiles.length === 0) { info('ui', 'drop user canceled file selection'); return }
+      info('ui', 'drop processed files', {
+        count: processedFiles.length,
+        withPath: processedFiles.filter((f: any) => f.path).length,
+        files: processedFiles.map((f: any) => ({ name: f.name, path: f.path, size: f.size }))
+      })
+      const targetPrefix = sel && its.find(it => it.type === 'folder' && it.data.prefix === sel) ? sel : pfx
+      info('ui', 'upload start', { bucket: bkt, prefix: targetPrefix, files: processedFiles.map((f: any) => f.name).slice(0, 5), more: Math.max(0, processedFiles.length - 5) })
+      const res = await (window as any).api.transfers.startUpload({ bucket: bkt, prefix: targetPrefix, files: processedFiles })
+      if (!res?.ok) {
+        info('ui', 'upload failed to start', { error: res?.error || 'unknown' })
+      } else {
+        info('ui', 'upload job created', { jobId: res.jobId })
+        registerJobRef.current(res.jobId)
+      }
+    } catch (error) {
+      trace('ui', 'drop error', { error: (error as Error)?.message || 'unknown' })
+    }
+  }
+
+  // Fallback: in some environments, DataTransfer.files can be empty.
+  // Try to parse file paths from text/uri-list or text/plain.
+  function convFileUriToPath(uri: string): string | null {
+    try {
+      if (!uri) return null
+      if (uri.startsWith('file://')) {
+        // Remove 'file:///' prefix; keep drive letter on Windows
+        let p = uri.replace(/^file:\/\//i, '')
+        // On Windows, leading slash may precede drive (e.g., /C:/path)
+        if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1)
+        // Decode percent-escapes
+        p = decodeURI(p)
+        // Convert forward slashes to backslashes on Windows
+        if (/^[A-Za-z]:/.test(p)) p = p.replace(/\//g, '\\')
+        return p
+      }
+      // Plain path
+      return uri
+    } catch {
+      return null
+    }
+  }
+  function extractPathsFromDataTransfer(dt: DataTransfer | null): string[] {
+    const out: string[] = []
+    if (!dt) return out
+    try {
+      const uriList = dt.getData('text/uri-list')
+      if (uriList) {
+        for (const line of uriList.split(/\r?\n/)) {
+          const s = line.trim()
+          if (!s || s.startsWith('#')) continue
+          const p = convFileUriToPath(s)
+          if (p) out.push(p)
+        }
+      }
+    } catch {}
+    try {
+      const plain = dt.getData('text/plain')
+      if (plain) {
+        for (const line of plain.split(/\r?\n/)) {
+          const s = line.trim()
+          if (!s) continue
+          // Heuristic: path-like or file URI
+          if (s.startsWith('file://') || /^[A-Za-z]:\\/.test(s) || s.startsWith('\\\\')) {
+            const p = convFileUriToPath(s)
+            if (p) out.push(p)
+          }
+        }
+      }
+    } catch {}
+    // Deduplicate
+    return Array.from(new Set(out))
+  }
+
+  async function onDrop(e: React.DragEvent) {
+    if (!bucket) { trace('ui', 'drop ignored no bucket'); return }
+    e.preventDefault()
+    info('ui', 'react drop event', {
+      target: (e.target as Element)?.tagName,
+      targetClass: (e.target as Element)?.className,
+      targetId: (e.target as Element)?.id
+    })
     // Debug dataTransfer contents
     try {
       const types = Array.from(e.dataTransfer?.types || [])
       trace('ui', 'dataTransfer types', { types })
-      
       for (const type of types) {
         try {
           const data = e.dataTransfer?.getData(type) || ''
@@ -371,42 +476,119 @@ export default function ObjectExplorer() {
     } catch (err) {
       trace('ui', 'dataTransfer access error', { error: String(err) })
     }
+    let fileList = Array.from(e.dataTransfer?.files || []) as File[]
+    if (fileList.length === 0) {
+      const paths = extractPathsFromDataTransfer(e.dataTransfer || null)
+      if (paths.length) {
+        info('ui', 'fallback paths from dataTransfer', { count: paths.length })
+        // Create File-like objects with path and inferred name/size unknown (size may be 0 until processed)
+        fileList = paths.map(p => ({ name: p.split(/[\\/]/).pop() || 'file', size: 0, type: '', arrayBuffer: async () => new ArrayBuffer(0) } as any))
+        // processDroppedFiles expects File[], but we only need .name and a resolvable .path via preload
+        ;(fileList as any).forEach((f: any, i: number) => { f.path = paths[i] })
+      }
+    }
+    info('ui', 'react drop processing files', { count: fileList.length })
+    await startUploadFromFileList(fileList)
+  }
 
-    trace('ui', 'drop files detected', { 
-      count: fileData.length, 
-      files: fileData.map(f => ({ name: f.name, size: f.size, hasPath: Boolean(f.path), path: f.path }))
-    })
-
-    try {
-      // Process the dropped files through the main process
-      const processedFiles = await (window as any).api.ui.processDroppedFiles(fileList)
+  // Add global dragover/drop listeners to prevent Electron navigation and
+  // ensure the explorer accepts drops even when UI structure changes (tabs etc.)
+  useEffect(() => {
+    function onWindowDragOver(ev: DragEvent) {
+      // Always prevent default so the OS indicates copy and Electron doesn't disallow
+      ev.preventDefault()
+      const x = (ev as any).clientX; const y = (ev as any).clientY
+      if (typeof x === 'number' && typeof y === 'number') lastDragPointRef.current = { x, y }
+      try { if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy' } catch {}
+      trace('ui', 'window dragover', { x, y, target: (ev.target as Element)?.tagName })
+    }
+    function onWindowDragEnter(ev: DragEvent) {
+      ev.preventDefault()
+      const x = (ev as any).clientX; const y = (ev as any).clientY
+      if (typeof x === 'number' && typeof y === 'number') lastDragPointRef.current = { x, y }
+      try { if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy' } catch {}
+    }
+    function onWindowDrop(ev: DragEvent) {
+      // Prevent default navigation behavior
+      ev.preventDefault()
+      ev.stopPropagation()
+      const target = ev.target as Node | null
+      const targetElement = target as Element | null
+      info('ui', 'window drop event', { 
+        x: (ev as any).clientX, 
+        y: (ev as any).clientY,
+        target: targetElement?.tagName,
+        targetClass: targetElement?.className,
+        targetId: targetElement?.id
+      })
       
-      if (processedFiles.length === 0) {
-        trace('ui', 'drop user canceled file selection')
+      let withinExplorer = false
+      const point = (typeof (ev as any).clientX === 'number' && typeof (ev as any).clientY === 'number')
+        ? { x: (ev as any).clientX as number, y: (ev as any).clientY as number }
+        : (lastDragPointRef.current || null)
+      
+      const testRect = (el: HTMLElement | null) => {
+        if (!el || !point) return false
+        const r = el.getBoundingClientRect()
+        const isWithin = point.x >= r.left && point.x <= r.right && point.y >= r.top && point.y <= r.bottom
+        info('ui', 'rect test', { 
+          element: el.className || el.tagName,
+          rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+          point,
+          isWithin
+        })
+        return isWithin
+      }
+      
+      if (testRect(contentRef.current) || testRect(listRef.current)) {
+        withinExplorer = true
+        info('ui', 'within explorer by rect test')
+      }
+      
+      // Fallback to DOM containment if available
+      if (!withinExplorer && target && (contentRef.current?.contains(target) || listRef.current?.contains(target))) {
+        withinExplorer = true
+        info('ui', 'within explorer by DOM containment')
+      }
+      
+      info('ui', 'drop analysis', { withinExplorer, hasContentRef: !!contentRef.current, hasListRef: !!listRef.current })
+      
+      if (!withinExplorer) {
+        info('ui', 'drop ignored - outside explorer area')
         return
       }
-
-      trace('ui', 'drop processed files', { 
-        count: processedFiles.length, 
-        withPath: processedFiles.filter((f: any) => f.path).length,
-        files: processedFiles.map((f: any) => ({ name: f.name, path: f.path, size: f.size }))
-      })
-
-      // Proceed with upload
-      const targetPrefix = selectedKey && items.find(it => it.type === 'folder' && it.data.prefix === selectedKey) ? selectedKey : prefix
-      trace('ui', 'upload start', { bucket, prefix: targetPrefix, files: processedFiles.map(f => f.name).slice(0, 5), more: Math.max(0, processedFiles.length - 5) })
       
-      const res = await (window as any).api.transfers.startUpload({ bucket, prefix: targetPrefix, files: processedFiles })
-      if (!res?.ok) {
-        trace('ui', 'upload failed to start', { error: res?.error || 'unknown' })
-      } else {
-        trace('ui', 'upload job created', { jobId: res.jobId })
-        registerJobForActiveTab(res.jobId)
+      info('ui', 'window drop inside explorer')
+      let files = Array.from(ev.dataTransfer?.files || []) as File[]
+      if (files.length === 0) {
+        const paths = extractPathsFromDataTransfer(ev.dataTransfer || null)
+        if (paths.length) {
+          info('ui', 'fallback paths from dataTransfer(window)', { count: paths.length })
+          files = paths.map(p => ({ name: p.split(/[\\/]/).pop() || 'file', size: 0, type: '', arrayBuffer: async () => new ArrayBuffer(0) } as any))
+          ;(files as any).forEach((f: any, i: number) => { f.path = paths[i] })
+        }
       }
-    } catch (error) {
-      trace('ui', 'drop error', { error: (error as Error)?.message || 'unknown' })
+      info('ui', 'processing files', { count: files.length })
+      // Delegate to shared logic
+      startUploadFromFileList(files, getSnapshot())
     }
-  }
+    window.addEventListener('dragover', onWindowDragOver, { capture: true })
+    window.addEventListener('dragenter', onWindowDragEnter, { capture: true })
+    window.addEventListener('drop', onWindowDrop, { capture: true })
+    document.addEventListener('dragover', onWindowDragOver, { capture: true })
+    document.addEventListener('dragenter', onWindowDragEnter, { capture: true })
+    document.addEventListener('drop', onWindowDrop, { capture: true })
+    return () => {
+      window.removeEventListener('dragover', onWindowDragOver, { capture: true } as any)
+      window.removeEventListener('dragenter', onWindowDragEnter, { capture: true } as any)
+      window.removeEventListener('drop', onWindowDrop, { capture: true } as any)
+      document.removeEventListener('dragover', onWindowDragOver, { capture: true } as any)
+      document.removeEventListener('dragenter', onWindowDragEnter, { capture: true } as any)
+      document.removeEventListener('drop', onWindowDrop, { capture: true } as any)
+    }
+    // It's safe to omit deps (we only need current ref and functions)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function onUploadFilesSelected(files: FileList | null) {
     if (!bucket) return
@@ -569,7 +751,7 @@ export default function ObjectExplorer() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-panel" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
+    <div className="flex-1 flex flex-col bg-panel h-full" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
   <div className="border-b border-default px-3 py-2 flex items-center gap-2 text-sm bg-header text-app">
         {bucket ? (
           <>
@@ -713,7 +895,7 @@ export default function ObjectExplorer() {
       </div>
 
   {/* Main content area */}
-  <div className="relative flex-1 overflow-auto bg-panel" onClick={(e) => {
+  <div className="relative flex-1 overflow-auto bg-panel min-h-0" ref={contentRef} onDragOver={onDragOver} onDrop={onDrop} onClick={(e) => {
         // Only deselect if clicking directly on the container, not on any child elements
         if (e.target === e.currentTarget) {
           trace('ui', 'deselect on background click')
@@ -783,35 +965,36 @@ export default function ObjectExplorer() {
               </div>
             </div>
           ) : (
-          <table className="min-w-full text-sm bg-panel text-app table-zebra">
-            <thead className="sticky top-0 bg-header border-b border-default text-app">
-              <tr className="text-left">
-                <th className="px-3 py-2 font-medium">
-                  <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('name')}>
-                    Name <span className="opacity-70">{sortIndicator('name')}</span>
-                  </button>
-                </th>
-                <th className="px-3 py-2 w-32 font-medium">
-                  <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('size')}>
-                    Size <span className="opacity-70">{sortIndicator('size')}</span>
-                  </button>
-                </th>
-                <th className="px-3 py-2 w-48 font-medium">
-                  <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('lastModified')}>
-                    Last Modified <span className="opacity-70">{sortIndicator('lastModified')}</span>
-                  </button>
-                </th>
-                <th className="px-3 py-2 w-48 font-medium">Storage Class</th>
-              </tr>
-            </thead>
-            <tbody className="bg-panel" onClick={(e) => {
-              // Deselect when clicking on tbody but not on a row
-              if (e.target === e.currentTarget) {
-                trace('ui', 'deselect on table body click')
-                setSelected(undefined, undefined)
-                setSelectedDetails(undefined)
-              }
-            }}>
+            <div className="h-full flex flex-col" onDragOver={onDragOver} onDrop={onDrop}>
+              <table className="min-w-full text-sm bg-panel text-app table-zebra">
+                <thead className="sticky top-0 bg-header border-b border-default text-app">
+                  <tr className="text-left">
+                    <th className="px-3 py-2 font-medium">
+                      <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('name')}>
+                        Name <span className="opacity-70">{sortIndicator('name')}</span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 w-32 font-medium">
+                      <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('size')}>
+                        Size <span className="opacity-70">{sortIndicator('size')}</span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 w-48 font-medium">
+                      <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('lastModified')}>
+                        Last Modified <span className="opacity-70">{sortIndicator('lastModified')}</span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 w-48 font-medium">Storage Class</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-panel" onClick={(e) => {
+                  // Deselect when clicking on tbody but not on a row
+                  if (e.target === e.currentTarget) {
+                    trace('ui', 'deselect on table body click')
+                    setSelected(undefined, undefined)
+                    setSelectedDetails(undefined)
+                  }
+                }}>
               {visibleItems.map((it, i) => {
                 const rowKey = keyOf(it)
                 const isSel = selectedSet.has(rowKey)
@@ -864,6 +1047,19 @@ export default function ObjectExplorer() {
               })}
             </tbody>
           </table>
+          {/* Flex spacer to fill remaining space and catch drops */}
+          <div className="flex-1 min-h-0" onClick={(e) => {
+            // Deselect when clicking on empty space
+            if (e.target === e.currentTarget) {
+              trace('ui', 'deselect on empty space click')
+              setSelected(undefined, undefined)
+              setSelectedDetails(undefined)
+              setSelectedSet(new Set())
+              setAnchorIndex(null)
+              setFocusedIndex(null)
+            }
+          }} />
+        </div>
           )
         )}
     {hasNextPage && (
