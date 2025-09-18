@@ -220,6 +220,7 @@ export async function writeAwsFiles(params: { credentialsText: string; configTex
   // ensure folder exists
   const awsDir = path.dirname(credsPath)
   try { await fs.promises.mkdir(awsDir, { recursive: true }) } catch {}
+  getLogger().debug('fs', 'writeAwsFiles begin', { credsPath, configPath, credsBytes: (params.credentialsText||'').length, cfgBytes: (params.configText||'').length })
   // simple backup
   async function backupIfExists(p: string) {
     try {
@@ -235,6 +236,16 @@ export async function writeAwsFiles(params: { credentialsText: string; configTex
   // write files
   await fs.promises.writeFile(credsPath, params.credentialsText ?? '', 'utf8')
   await fs.promises.writeFile(configPath, params.configText ?? '', 'utf8')
+  try {
+    const [c1, c2] = await Promise.all([
+      fs.promises.readFile(credsPath, 'utf8').catch(() => ''),
+      fs.promises.readFile(configPath, 'utf8').catch(() => '')
+    ])
+    getLogger().debug('fs', 'writeAwsFiles verify', { credsBytes: c1.length, cfgBytes: c2.length })
+  } catch (e) {
+    const msg = (e as Error)?.message || String(e)
+    getLogger().warn('fs', 'writeAwsFiles verify error', { error: msg })
+  }
 }
 
 function toFriendlyError(context: string, err: unknown): Error {

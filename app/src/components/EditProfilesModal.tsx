@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { debug as logDebug, info as logInfo, warn as logWarn, error as logError } from '../lib/log'
 
 type Props = { isOpen: boolean; onClose: () => void; onSaved?: () => void }
 type SectionMap = Record<string, Record<string, string>>
@@ -57,13 +58,13 @@ function mergeCredsConfig(credentialsText: string, configText: string): SectionM
 
 export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | undefined>()
+  const [error, setError] = useState(undefined as string | undefined)
   const [credsRaw, setCredsRaw] = useState('')
   const [configRaw, setConfigRaw] = useState('')
-  const [paths, setPaths] = useState<{ creds?: string; cfg?: string }>({})
-  const [selected, setSelected] = useState<string | undefined>()
-  const [editing, setEditing] = useState<{ name: string } | null>(null)
-  const rightRef = useRef<HTMLTextAreaElement | null>(null)
+  const [paths, setPaths] = useState({} as { creds?: string; cfg?: string })
+  const [selected, setSelected] = useState(undefined as string | undefined)
+  const [editing, setEditing] = useState(null as { name: string } | null)
+  const rightRef = useRef(null as HTMLTextAreaElement | null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -82,6 +83,31 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
 
   const combined = useMemo(() => mergeCredsConfig(credsRaw, configRaw), [credsRaw, configRaw])
   const profiles = useMemo(() => Object.keys(combined).filter(n => !n.startsWith('sso-session ')), [combined])
+  
+  // Create a combined display text showing both credentials and config files
+  const combinedDisplayText = useMemo(() => {
+    if (!credsRaw && !configRaw) return ''
+    
+    let result = ''
+    
+    if (credsRaw.trim()) {
+      result += '# ============ CREDENTIALS FILE ============\n'
+      result += '# ' + (paths.creds || 'credentials') + '\n\n'
+      result += credsRaw
+      if (!credsRaw.endsWith('\n')) result += '\n'
+    }
+    
+    if (configRaw.trim()) {
+      if (result) result += '\n'
+      result += '# ============ CONFIG FILE ============\n'
+      result += '# ' + (paths.cfg || 'config') + '\n\n'
+      result += configRaw
+      if (!configRaw.endsWith('\n')) result += '\n'
+    }
+    
+    return result
+  }, [credsRaw, configRaw, paths])
+  
   const [query, setQuery] = useState('')
   const filteredProfiles = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -95,20 +121,39 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
 
   const findSectionBounds = React.useCallback((text: string, sectionName: string) => {
     if (!sectionName) return null
-    const header = `[${sectionName}]`
-    let start = -1
-    // Prefer match at line start: "\n[section]" or beginning of file "[section]"
-    const afterNl = text.indexOf('\n' + header)
-    if (afterNl !== -1) start = afterNl + 1
-    else if (text.startsWith(header)) start = 0
-    else {
-      const idx = text.indexOf(header)
-      if (idx > 0 && (text[idx - 1] === '\n')) start = idx
+    
+    // Look for the profile in both credentials and config sections
+    const credHeader = `[${sectionName}]`
+    const configHeader = `[profile ${sectionName}]`
+    
+    let bestMatch: string | null = null
+    let bestStart = -1
+    
+    // Check for credentials section [profilename]
+    const credAfterNl = text.indexOf('\n' + credHeader)
+    if (credAfterNl !== -1) {
+      bestStart = credAfterNl + 1
+      bestMatch = credHeader
+    } else if (text.startsWith(credHeader)) {
+      bestStart = 0
+      bestMatch = credHeader
     }
-    if (start === -1) return null
-    const next = text.indexOf('\n[', start + header.length)
-    const end = next === -1 ? text.length : next + 1 // position of '[' of next header
-    return { start, end }
+    
+    // Check for config section [profile profilename]
+    const configAfterNl = text.indexOf('\n' + configHeader)
+    if (configAfterNl !== -1 && (bestStart === -1 || configAfterNl < bestStart)) {
+      bestStart = configAfterNl + 1
+      bestMatch = configHeader
+    } else if (text.startsWith(configHeader) && bestStart === -1) {
+      bestStart = 0
+      bestMatch = configHeader
+    }
+    
+    if (bestStart === -1 || !bestMatch) return null
+    
+    const next = text.indexOf('\n[', bestStart + bestMatch.length)
+    const end = next === -1 ? text.length : next + 1
+    return { start: bestStart, end }
   }, [])
 
   useEffect(() => {
@@ -128,7 +173,7 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
   rightRef.current.selectionEnd = end
       rightRef.current.focus()
     }
-  }, [selected, editing])
+  }, [selected, editing, combinedDisplayText, findSectionBounds])
 
 
   function openEdit() { if (selected) setEditing({ name: selected }) }
@@ -136,42 +181,77 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
 
   // Using native selection highlight; no overlay parts needed
 
-  function applyEdit(name: string, values: Record<string, string | undefined>) {
+  // Apply changes and return new serialized contents so we can persist exact bytes (avoid async setState race)
+  function applyEdit(name: string, values: Record<string, string | undefined>): { credentialsText: string; configText: string } {
     const creds = parseIni(credsRaw)
     const cfg = parseIni(configRaw)
     const short = name.startsWith('profile ') ? name.slice('profile '.length) : name
     const cfgName = `profile ${short}`
-    // apply credential keys (allowed only)
-    const nextCred: Record<string,string> = {}
+    
+    // Start with existing credential data for this profile
+    const nextCred: Record<string,string> = { ...(creds[short] || {}) }
+    // Apply credential key updates (allowed only)
     for (const k of ALLOWED_CRED_KEYS) {
-      const v = values[k]
-      if (v && v.trim()) nextCred[k] = v.trim()
+      if (values.hasOwnProperty(k)) {
+        const v = values[k]
+        if (v && v.trim()) {
+          nextCred[k] = v.trim()
+        } else {
+          // If the value is empty, remove the key
+          delete nextCred[k]
+        }
+      }
     }
-    if (Object.keys(nextCred).length > 0) creds[short] = nextCred
-    else delete creds[short]
-    // apply config keys (allowed only)
-    const nextCfg: Record<string,string> = {}
+    if (Object.keys(nextCred).length > 0) {
+      creds[short] = nextCred
+    } else {
+      delete creds[short]
+    }
+    
+    // Start with existing config data for this profile
+    const nextCfg: Record<string,string> = { ...(cfg[cfgName] || {}) }
+    // Apply config key updates (allowed only)
     for (const k of ALLOWED_CONFIG_KEYS) {
-      const v = values[k]
-      if (v && v.trim()) nextCfg[k] = v.trim()
+      if (values.hasOwnProperty(k)) {
+        const v = values[k]
+        if (v && v.trim()) {
+          nextCfg[k] = v.trim()
+        } else {
+          // If the value is empty, remove the key
+          delete nextCfg[k]
+        }
+      }
     }
-    if (Object.keys(nextCfg).length > 0) cfg[cfgName] = nextCfg
-    else delete cfg[cfgName]
-    setCredsRaw(stringifyIni(creds))
-    setConfigRaw(stringifyIni(cfg))
+    if (Object.keys(nextCfg).length > 0) {
+      cfg[cfgName] = nextCfg
+    } else {
+      delete cfg[cfgName]
+    }
+
+  const newCreds = stringifyIni(creds)
+  const newCfg = stringifyIni(cfg)
+  logDebug('profiles', 'applyEdit result', { profile: short, credsBytes: newCreds.length, cfgBytes: newCfg.length })
+    setCredsRaw(newCreds)
+    setConfigRaw(newCfg)
+    return { credentialsText: newCreds, configText: newCfg }
   }
 
-  async function saveEntryToDisk() {
+  async function saveEntryToDisk(params?: { credentialsText: string; configText: string }) {
     try {
-      const res = await (window as any).api.s3.writeAwsFiles({ credentialsText: credsRaw, configText: configRaw })
+  const toWrite = params ?? { credentialsText: credsRaw, configText: configRaw }
+  logInfo('profiles', 'writeAwsFiles request', { credsBytes: (toWrite.credentialsText||'').length, cfgBytes: (toWrite.configText||'').length })
+      const res = await (window as any).api.s3.writeAwsFiles(toWrite)
       if (!res?.ok) throw new Error(res?.error || 'Failed to save')
       // Refresh the AWS files after saving to show the updated content
       const files = await (window as any).api.s3.getAwsFiles()
+  logDebug('profiles', 'writeAwsFiles reload', { credsBytes: (files.credentialsText||'').length, cfgBytes: (files.configText||'').length })
       setCredsRaw(files.credentialsText || '')
       setConfigRaw(files.configText || '')
       if (onSaved) onSaved()
     } catch (e) {
-      setError((e as Error)?.message || 'Failed to save')
+  const msg = (e as Error)?.message || 'Failed to save'
+  logError('profiles', 'writeAwsFiles failed', { error: msg })
+      setError(msg)
     }
   }
 
@@ -244,14 +324,14 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
                 <textarea
                   ref={rightRef}
                   className="absolute inset-0 w-full h-full rounded border input-theme font-mono text-sm p-2 resize-none bg-transparent"
-                  value={credsRaw}
+                  value={combinedDisplayText}
                   readOnly
                   spellCheck={false}
                   wrap="off"
                   onScroll={() => {}}
                 />
               </div>
-              <div className="mt-2 text-xs opacity-70">Read-only view of the credentials file. Select a profile on the left to jump; click Edit entry… to modify with a form.</div>
+              <div className="mt-2 text-xs opacity-70">Read-only view of both credentials and config files. Select a profile on the left to jump; click Edit entry… to modify with a form.</div>
             </div>
           </div>
         )}
@@ -266,7 +346,11 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
           initial={combined[editing.name] || {}}
           sourceOptions={profiles.filter(p => p !== editing.name)}
           onCancel={() => setEditing(null)}
-          onSave={async (vals) => { applyEdit(editing.name, vals); await saveEntryToDisk(); setEditing(null) }}
+          onSave={async (vals) => {
+            const updated = applyEdit(editing.name, vals)
+            await saveEntryToDisk(updated)
+            setEditing(null)
+          }}
         />
       )}
     </div>
@@ -280,7 +364,7 @@ function Field({ k, label, placeholder, type: inputType = 'text', vals, setVals 
   placeholder?: string; 
   type?: string;
   vals: Record<string, string>;
-  setVals: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setVals: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
 }) {
   return (
     <div>
@@ -290,7 +374,7 @@ function Field({ k, label, placeholder, type: inputType = 'text', vals, setVals 
         value={vals[k] || ''}
         placeholder={placeholder}
         onKeyDown={(e) => e.stopPropagation()}
-        onChange={e => setVals(s => ({ ...s, [k]: e.target.value }))}
+  onChange={e => setVals(s => ({ ...s, [k]: e.target.value }))}
         type={inputType}
       />
     </div>
@@ -303,8 +387,8 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
     if (v.aws_session_token) return 'temp'
     return 'standard'
   }
-  const [type, setType] = useState<ProfileType>(() => inferType(initial))
-  const [vals, setVals] = useState<Record<string, string>>(() => ({
+  const [type, setType] = useState(() => inferType(initial))
+  const [vals, setVals] = useState(() => ({
     region: initial.region || '',
     aws_access_key_id: initial.aws_access_key_id || '',
     aws_secret_access_key: initial.aws_secret_access_key || '',
@@ -318,18 +402,18 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
   const saveSanitized = async () => {
     // Only keep keys relevant to selected type + region
     const out: Record<string, string> = {}
-    if (vals.region) out.region = vals.region
+    out.region = vals.region || ''
     if (type === 'standard') {
-      if (vals.aws_access_key_id) out.aws_access_key_id = vals.aws_access_key_id
-      if (vals.aws_secret_access_key) out.aws_secret_access_key = vals.aws_secret_access_key
+      out.aws_access_key_id = vals.aws_access_key_id || ''
+      out.aws_secret_access_key = vals.aws_secret_access_key || ''
     } else if (type === 'temp') {
-      if (vals.aws_access_key_id) out.aws_access_key_id = vals.aws_access_key_id
-      if (vals.aws_secret_access_key) out.aws_secret_access_key = vals.aws_secret_access_key
-      if (vals.aws_session_token) out.aws_session_token = vals.aws_session_token
+      out.aws_access_key_id = vals.aws_access_key_id || ''
+      out.aws_secret_access_key = vals.aws_secret_access_key || ''
+      out.aws_session_token = vals.aws_session_token || ''
     } else if (type === 'assume-role') {
-      if (vals.role_arn) out.role_arn = vals.role_arn
-      if (vals.credential_source) out.credential_source = vals.credential_source
-      if (vals.source_profile) out.source_profile = vals.source_profile
+      out.role_arn = vals.role_arn || ''
+      out.credential_source = vals.credential_source || ''
+      out.source_profile = vals.source_profile || ''
     }
     await onSave(out)
   }
