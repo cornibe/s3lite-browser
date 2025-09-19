@@ -45,9 +45,7 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: |
-            ${{ github.workspace }}/app/package-lock.json
-            ${{ github.workspace }}/app/package.json
+          cache-dependency-path: 'app/package-lock.json'
 
       - name: Install dependencies
         shell: pwsh
