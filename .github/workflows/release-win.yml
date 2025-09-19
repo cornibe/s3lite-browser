@@ -40,12 +40,19 @@ jobs:
           $pkg.version = $version
           $pkg | ConvertTo-Json -Depth 20 | Out-File -FilePath $pkgPath -Encoding utf8
 
-      - name: Use Node.js 20
+      - name: Use Node.js 20 (with npm cache)
+        if: ${{ hashFiles('app/package-lock.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'app/package-lock.json'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Use Node.js 20
+        if: ${{ hashFiles('app/package-lock.json') == '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Install dependencies
         shell: pwsh
