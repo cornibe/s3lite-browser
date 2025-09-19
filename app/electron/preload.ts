@@ -18,6 +18,7 @@ const Channels = {
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
+  UI_MESSAGE_BOX: 'ui:messageBox',
   UI_OPEN_SETTINGS: 'ui:openSettings',
   LOG_WRITE: 'log:write',
   LOG_GET_LEVEL: 'log:getLevel',
@@ -64,6 +65,7 @@ const api: RendererAPI = {
       }))
       return ipcRenderer.invoke(Channels.UI_PROCESS_DROPPED_FILES, fileData)
     },
+  showMessageBox: (options) => ipcRenderer.invoke(Channels.UI_MESSAGE_BOX, options),
     onOpenSettings: (cb: () => void) => {
       const handler = () => cb()
       ipcRenderer.on(Channels.UI_OPEN_SETTINGS, handler)

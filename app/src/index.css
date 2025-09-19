@@ -30,6 +30,9 @@
   --color-info-bg: #dbeafe;       /* blue-100 */
   --color-info-border: #bfdbfe;   /* blue-200 */
   --color-info-text: #1e40af;     /* blue-800 */
+  --color-success-bg: #dcfce7;    /* green-100 */
+  --color-success-border: #bbf7d0;/* green-200 */
+  --color-success-text: #065f46;  /* emerald-800 */
   }
 
   /* Theme tokens (dark) */
@@ -57,6 +60,9 @@
   --color-info-bg: rgba(59, 130, 246, 0.18);
   --color-info-border: #1e3a8a;
   --color-info-text: #bfdbfe;
+  --color-success-bg: rgba(16, 185, 129, 0.18); /* emerald-500 @ 18% */
+  --color-success-border: #065f46;              /* emerald-800 */
+  --color-success-text: #bbf7d0;                /* green-200 */
   }
 
   /* Set base background/text colors for both themes */
@@ -105,4 +111,5 @@
   .alert-error { background-color: var(--color-error-bg); color: var(--color-error-text); border-color: var(--color-error-border); }
   .alert-warn { background-color: var(--color-warn-bg); color: var(--color-warn-text); border-color: var(--color-warn-border); }
   .alert-info { background-color: var(--color-info-bg); color: var(--color-info-text); border-color: var(--color-info-border); }
+  .alert-success { background-color: var(--color-success-bg); color: var(--color-success-text); border-color: var(--color-success-border); }
 }

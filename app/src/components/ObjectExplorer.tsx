@@ -117,7 +117,7 @@ function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab, showToast } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -168,7 +168,9 @@ export default function ObjectExplorer() {
   useEffect(() => { registerJobRef.current = registerJobForActiveTab }, [registerJobForActiveTab])
   // Cleanup feedback timer on unmount
   useEffect(() => {
-    return () => { if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current) }
+    return () => {
+      if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current)
+    }
   }, [])
 
   // Reset prefix and selection when disconnected to avoid stale UI
@@ -418,6 +420,10 @@ export default function ObjectExplorer() {
       if (!res?.ok) {
         info('ui', 'upload failed to start', { error: res?.error || 'unknown' })
         setDropFeedback({ stage: 'error', message: `Failed to start upload: ${res?.error || 'unknown'}` })
+        showToast({
+          type: 'error',
+          message: `Upload failed: ${res?.error || 'Failed to start upload'}`
+        });
         if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current)
         dropFeedbackTimer.current = window.setTimeout(() => setDropFeedback(null), 3000)
       } else {
@@ -428,8 +434,13 @@ export default function ObjectExplorer() {
         dropFeedbackTimer.current = window.setTimeout(() => setDropFeedback(null), 1500)
       }
     } catch (error) {
-      trace('ui', 'drop error', { error: (error as Error)?.message || 'unknown' })
-      setDropFeedback({ stage: 'error', message: `Error preparing files: ${(error as Error)?.message || 'unknown'}` })
+      const msg = (error as Error)?.message || 'unknown'
+      trace('ui', 'drop error', { error: msg })
+      setDropFeedback({ stage: 'error', message: `Error preparing files: ${msg}` })
+      showToast({
+        type: 'error',
+        message: `Upload failed: ${msg}`
+      });
       if (dropFeedbackTimer.current) window.clearTimeout(dropFeedbackTimer.current)
       dropFeedbackTimer.current = window.setTimeout(() => setDropFeedback(null), 3000)
     }
@@ -490,7 +501,7 @@ export default function ObjectExplorer() {
   }
 
   async function onDrop(e: React.DragEvent) {
-    if (!bucket) { trace('ui', 'drop ignored no bucket'); return }
+  if (!bucket) { trace('ui', 'drop ignored no bucket'); await (window as any).api.ui.showMessageBox({ type: 'error', title: 'Upload failed', message: 'No bucket selected' }); return }
     e.preventDefault()
     info('ui', 'react drop event', {
       target: (e.target as Element)?.tagName,
@@ -628,7 +639,7 @@ export default function ObjectExplorer() {
   }, [])
 
   async function onUploadFilesSelected(files: FileList | null) {
-    if (!bucket) return
+  if (!bucket) { await (window as any).api.ui.showMessageBox({ type: 'error', title: 'Upload failed', message: 'No bucket selected' }); return }
     if (!files || files.length === 0) return
     try {
       const fileArr = Array.from(files)
@@ -636,9 +647,20 @@ export default function ObjectExplorer() {
       if (!processedFiles || processedFiles.length === 0) return
       const targetPrefix = selectedKey && items.find(it => it.type === 'folder' && it.data.prefix === selectedKey) ? selectedKey : prefix
       const res = await (window as any).api.transfers.startUpload({ bucket, prefix: targetPrefix, files: processedFiles })
-      if (res?.ok && res.jobId) registerJobForActiveTab(res.jobId)
+      if (res?.ok && res.jobId) {
+        registerJobForActiveTab(res.jobId)
+      } else if (!res?.ok) {
+        showToast({
+          type: 'error',
+          message: `Upload failed: ${res?.error || 'unknown error'}`
+        });
+      }
     } catch (e) {
       console.error('upload failed', e)
+      showToast({
+        type: 'error',
+        message: `Upload failed: ${(e as Error)?.message || 'unknown error'}`
+      });
     } finally {
       // Reset input so selecting the same file again triggers onChange
       try { if (uploadInputRef.current) uploadInputRef.current.value = '' } catch {}
@@ -740,29 +762,55 @@ export default function ObjectExplorer() {
 
   const confirmDelete = async () => {
     if (!deleteConfirmation) return
-    const { items: delItems } = deleteConfirmation
-    const objKeys: string[] = []
-    const folders: string[] = []
-    for (const it of delItems) {
-      if (it.type === 'object') objKeys.push(it.data.key)
-      else folders.push(it.data.prefix)
+    try {
+      const { items: delItems } = deleteConfirmation
+      const objKeys: string[] = []
+      const folders: string[] = []
+      for (const it of delItems) {
+        if (it.type === 'object') objKeys.push(it.data.key)
+        else folders.push(it.data.prefix)
+      }
+      
+      // Delete objects in bulk if any
+      if (objKeys.length > 0) {
+        const result = await (window as any).api.s3.deleteObjects({ bucket, keys: objKeys })
+        if (!result.ok) {
+          throw new Error(result.error)
+        }
+        // Check for partial failures
+        if (result.ok && result.result.errors.length > 0) {
+          const errorMessages = result.result.errors.map(e => `${e.key}: ${e.error}`).join('\n')
+          throw new Error(`Failed to delete some objects:\n${errorMessages}`)
+        }
+      }
+      
+      // Delete folders individually (API is per-folder)
+      for (const p of folders) {
+        const result = await (window as any).api.s3.deleteFolder({ bucket, prefix: p })
+        if (!result.ok) {
+          throw new Error(result.error)
+        }
+        // Check for partial failures in folder deletion
+        if (result.ok && result.result.errors.length > 0) {
+          const errorMessages = result.result.errors.map(e => `${e.key}: ${e.error}`).join('\n')
+          throw new Error(`Failed to delete some objects in folder ${p}:\n${errorMessages}`)
+        }
+      }
+      
+      // Clear selection if necessary
+      setSelected(undefined, undefined)
+      setSelectedDetails(undefined)
+      setSelectedSet(new Set())
+      // Refresh list
+      await refetch()
+    } catch (err) {
+      showToast({
+        type: 'error',
+        message: `Delete failed: ${(err as Error)?.message || 'unknown error'}`
+      });
+      // Re-throw error so modal can also display it
+      throw err
     }
-    // Delete objects in bulk if any
-    if (objKeys.length > 0) {
-      const result = await (window as any).api.s3.deleteObjects({ bucket, keys: objKeys })
-      if (!result.ok) throw new Error(result.error)
-    }
-    // Delete folders individually (API is per-folder)
-    for (const p of folders) {
-      const result = await (window as any).api.s3.deleteFolder({ bucket, prefix: p })
-      if (!result.ok) throw new Error(result.error)
-    }
-    // Clear selection if necessary
-    setSelected(undefined, undefined)
-    setSelectedDetails(undefined)
-    setSelectedSet(new Set())
-    // Refresh list
-    await refetch()
   }
 
   const crumbs = splitPrefix(prefix)
@@ -871,60 +919,6 @@ export default function ObjectExplorer() {
               >×</button>
             )}
           </div>
-          {bucket && (
-            <>
-              <button
-                onClick={() => refetch()}
-                className="btn btn-primary text-xs cursor-pointer"
-                title="Refresh folder contents"
-              >
-                ↻ Refresh
-              </button>
-              <button
-                onClick={() => uploadInputRef.current?.click()}
-                className="btn btn-primary text-xs cursor-pointer"
-                title="Upload files to this location"
-              >
-                ↑ Upload
-              </button>
-              <button
-                onClick={() => setShowCreateFolder(true)}
-                className="btn btn-primary text-xs cursor-pointer"
-                title="Create new folder"
-              >
-                + Folder
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    await handleDownload()
-                  } catch (e) {
-                    console.error('download failed', e)
-                  }
-                }}
-                className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
-                title={selectedSet.size > 1 ? `Download ${selectedSet.size} selected items` : 'Download selected item'}
-                disabled={selectedSet.size === 0 && !selectedKey}
-              >
-                ↓ Download{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
-              </button>
-              <button
-                onClick={() => {
-                  if (selectedSet.size > 1) {
-                    handleDeleteSelected()
-                  } else if (selectedKey) {
-                    const entry = items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
-                    if (entry) handleDelete(entry)
-                  }
-                }}
-                className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
-                title={selectedSet.size > 1 ? `Delete ${selectedSet.size} selected items` : 'Delete selected item'}
-                disabled={selectedSet.size === 0 && !selectedKey}
-              >
-                🗑 Delete{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
-              </button>
-            </>
-          )}
     {prefix && <button className="text-xs underline cursor-pointer link-accent" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
   {/* Hidden file input for uploads */}
   <input ref={uploadInputRef} type="file" multiple className="hidden" onChange={(e) => onUploadFilesSelected(e.target.files)} />
@@ -951,6 +945,8 @@ export default function ObjectExplorer() {
             </div>
           </div>
         )}
+        {/* Prominent toast for errors/info */}
+        
         {showRefreshOverlay && (
           <div className="absolute inset-0 z-10 flex items-center justify-center overlay-bg pointer-events-none">
             <svg className="h-8 w-8 animate-spin text-[#0e639c] dark:text-[#3794ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
@@ -1117,6 +1113,66 @@ export default function ObjectExplorer() {
       </div>
 
   {/* Details moved to bottom panel */}
+
+      {/* Action bar moved to bottom of object panel */}
+      <div className="border-t border-default px-3 py-2 flex items-center gap-2 bg-header text-app">
+        {bucket && (
+          <>
+            <button
+              onClick={() => refetch()}
+              className="btn btn-primary text-xs cursor-pointer"
+              title="Refresh folder contents"
+            >
+              ↻ Refresh
+            </button>
+            <button
+              onClick={() => uploadInputRef.current?.click()}
+              className="btn btn-primary text-xs cursor-pointer"
+              title="Upload files to this location"
+            >
+              ↑ Upload
+            </button>
+            <button
+              onClick={() => setShowCreateFolder(true)}
+              className="btn btn-primary text-xs cursor-pointer"
+              title="Create new folder"
+            >
+              + Folder
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await handleDownload()
+                } catch (e) {
+                  console.error('download failed', e)
+                }
+              }}
+              className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
+              title={selectedSet.size > 1 ? `Download ${selectedSet.size} selected items` : 'Download selected item'}
+              disabled={selectedSet.size === 0 && !selectedKey}
+            >
+              ↓ Download{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
+            </button>
+            <button
+              onClick={() => {
+                if (selectedSet.size > 1) {
+                  handleDeleteSelected()
+                } else if (selectedKey) {
+                  const entry = items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
+                  if (entry) handleDelete(entry)
+                }
+              }}
+              className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
+              title={selectedSet.size > 1 ? `Delete ${selectedSet.size} selected items` : 'Delete selected item'}
+              disabled={selectedSet.size === 0 && !selectedKey}
+            >
+              🗑 Delete{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
+            </button>
+          </>
+        )}
+        {/* Keep hidden file input accessible here too */}
+        <input ref={uploadInputRef} type="file" multiple className="hidden" onChange={(e) => onUploadFilesSelected(e.target.files)} />
+      </div>
 
    {contextMenu && (
      <div className="fixed z-50 menu-bg border border-default rounded shadow text-sm"

@@ -6,9 +6,10 @@ import ObjectExplorer from './components/ObjectExplorer'
 import BottomPanel from './components/BottomPanel'
 import SettingsModal from './components/SettingsModal'
 import { useStore } from './lib/store'
+import { createPortal } from 'react-dom'
 
 export default function App() {
-  const { settings, setSettings } = useStore()
+  const { settings, setSettings, toast } = useStore()
   const [drag, setDrag] = useState<null | { type: 'sidebar' | 'queue'; startX: number; startY: number; startSidebar: number; startQueue: number }>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const minSidebar = 180
@@ -112,6 +113,12 @@ export default function App() {
           <BottomPanel />
         </div>
         <SettingsModal />
+        {toast && createPortal(
+          <div className="fixed top-3 right-3 z-[9999] pointer-events-none">
+            <div className={`${toast.type === 'error' ? 'alert alert-error' : toast.type === 'success' ? 'alert alert-success' : 'menu-bg border border-default'} px-3 py-2 rounded text-sm shadow`}>{toast.message}</div>
+          </div>,
+          document.body
+        )}
       </div>
     </div>
   )

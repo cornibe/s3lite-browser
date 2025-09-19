@@ -30,7 +30,8 @@ export default function DeleteConfirmationModal({
       await onConfirm()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete')
+      // Close the modal and let the parent component handle error display (e.g., toast)
+      onClose()
     } finally {
       setIsDeleting(false)
     }

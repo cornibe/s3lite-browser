@@ -199,6 +199,20 @@ export function registerIpc() {
     return result
   })
 
+  ipcMain.handle(IpcChannels.UI_MESSAGE_BOX, async (e, options: { type?: 'none'|'info'|'error'|'question'|'warning'; title?: string; message: string; detail?: string; buttons?: string[] }) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    const res = await dialog.showMessageBox(win, {
+      type: options.type ?? 'info',
+      title: options.title ?? (options.type === 'error' ? 'Error' : 'Message'),
+      message: options.message,
+      detail: options.detail,
+      buttons: options.buttons ?? ['OK'],
+      noLink: true,
+      normalizeAccessKeys: true
+    })
+    return { response: res.response }
+  })
+
   // Logging bridge from renderer
   ipcMain.handle(IpcChannels.LOG_WRITE, async (_e, payload: { level: string; scope: string; msg: string; meta?: Record<string, unknown> }) => {
     const lvl = (payload.level || 'INFO').toUpperCase()

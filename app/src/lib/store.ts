@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { debug, warn } from './log'
 import type { TransferEvent, TransferItem, TransferJob } from '../../electron/types'
 
 type TabState = {
@@ -72,6 +73,7 @@ type State = {
   // Job -> tab mapping to route transfer events
   jobTab: Record<string, string>
   awsLog: AwsLogEntry[]
+  toast?: { type: 'error' | 'info' | 'success'; message: string }
 }
 
 type Actions = {
@@ -98,6 +100,11 @@ type Actions = {
   openSettings: () => void
   closeSettings: () => void
   setSettings: (settings: Partial<SettingsState>) => void
+  // Accepts either an object payload or legacy (type, message, duration)
+  showToast: (
+    toast: { type: 'error' | 'info' | 'success'; message: string },
+    durationMs?: number
+  ) => void
   // Helpers
   startDownloadObject: (destDir: string) => Promise<void>
   startDownloadPrefix: (destDir: string) => Promise<void>
@@ -154,6 +161,13 @@ function createEmptyTab(id: string): TabState {
   }
 }
 
+let toastTimer: number | undefined
+
+type ShowToast = {
+  (toast: { type: 'error' | 'info' | 'success'; message: string }, durationMs?: number): void
+  (type: 'error' | 'info' | 'success', message: string, durationMs?: number): void
+}
+
 export const useStore = create<State & Actions>((set, get) => {
   function syncMirrorFrom(tab: TabState) {
     set({
@@ -193,6 +207,7 @@ export const useStore = create<State & Actions>((set, get) => {
     // Global UI
     isSettingsOpen: false,
     settings: loadSettings(),
+    toast: undefined,
     // job mapping
     jobTab: {},
   awsLog: [],
@@ -283,6 +298,36 @@ export const useStore = create<State & Actions>((set, get) => {
     openSettings: () => set({ isSettingsOpen: true }),
     closeSettings: () => set({ isSettingsOpen: false }),
     setSettings: (partial) => set(s => { const next = { ...s.settings, ...partial }; persistSettings(next); return { settings: next } }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    showToast: ((...args: any[]) => {
+      // Normalize arguments to { type, message } + duration
+      let payload: { type: 'error' | 'info' | 'success'; message: string }
+      let durationMs: number | undefined
+      if (typeof args[0] === 'string') {
+        // Legacy signature: (type, message, duration?)
+        const type = args[0] as 'error' | 'info' | 'success'
+        const message = String(args[1] ?? '')
+        durationMs = typeof args[2] === 'number' ? args[2] : undefined
+        payload = { type, message }
+        warn('ui', 'showToast called with legacy signature', { type, message, durationMs })
+      } else {
+        payload = args[0]
+        durationMs = typeof args[1] === 'number' ? args[1] : undefined
+      }
+      const dur = durationMs ?? 3500
+      debug('ui', 'showToast', { payload, durationMs: dur })
+      try {
+        if (toastTimer) window.clearTimeout(toastTimer)
+      } catch {}
+      set({ toast: payload })
+      try {
+        toastTimer = window.setTimeout(() => {
+          set({ toast: undefined })
+          toastTimer = undefined
+          debug('ui', 'toast cleared')
+        }, dur)
+      } catch {}
+    }) as unknown as ShowToast,
 
     // Helpers
     startDownloadObject: async (destDir) => {
