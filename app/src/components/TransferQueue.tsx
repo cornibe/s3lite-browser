@@ -57,15 +57,15 @@ function ActionButtons({ job, onRemove }: { job: TransferJobType; onRemove: () =
   if (isTerminal) {
     return (
       <div className="flex justify-end">
-  <button aria-label="Remove job" className="px-2 py-1 text-xs bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={onRemove}>Remove</button>
+        <button aria-label="Remove job" className="btn btn-secondary text-xs" onClick={onRemove}>Remove</button>
       </div>
     )
   }
   return (
     <div className="flex gap-1 justify-end">
-      <button aria-label="Pause job" disabled={!canPause} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'pause' })}>Pause</button>
-      <button aria-label="Resume job" disabled={!canResume} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'resume' })}>Resume</button>
-      <button aria-label="Cancel job" disabled={!canCancel} className="px-2 py-1 text-xs bg-neutral-200 disabled:opacity-50 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'cancel' })}>Cancel</button>
+      <button aria-label="Pause job" disabled={!canPause} className="btn btn-secondary text-xs disabled:opacity-50" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'pause' })}>Pause</button>
+      <button aria-label="Resume job" disabled={!canResume} className="btn btn-secondary text-xs disabled:opacity-50" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'resume' })}>Resume</button>
+      <button aria-label="Cancel job" disabled={!canCancel} className="btn btn-secondary text-xs disabled:opacity-50" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'cancel' })}>Cancel</button>
     </div>
   )
 }
@@ -105,7 +105,7 @@ const TransferItem: React.FC<{ item: TransferItemType; job: TransferJobType }> =
       {/* Actions column for items intentionally minimal: only Remove on terminal states */}
       <div role="cell" className="text-right">
         {(item.status === 'completed' || item.status === 'failed' || item.status === 'canceled') && (
-          <button aria-label="Remove item" className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-800 rounded" onClick={removeItem}>Remove</button>
+          <button aria-label="Remove item" className="btn btn-secondary text-xs" onClick={removeItem}>Remove</button>
         )}
       </div>
     </div>
@@ -193,7 +193,7 @@ export default function TransferQueue() {
         <div className="font-semibold">Transfer Queue</div>
         <div className="ml-auto flex items-center gap-2">
           <button
-            className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334]"
+            className="btn btn-secondary text-xs"
             title="Clear finished (completed/failed/canceled)"
             onClick={() => {
               // Remove terminal jobs and their items

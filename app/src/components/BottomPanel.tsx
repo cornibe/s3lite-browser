@@ -14,19 +14,19 @@ export default function BottomPanel() {
     <div className="h-full flex flex-col bg-header text-app border-t border-default">
       <div className="flex items-center gap-2 px-2 py-1 border-b border-default bg-header">
         <button
-          className={`px-2 py-1 text-sm rounded ${activeTab === 'properties' ? 'bg-neutral-200 dark:bg-[#2a2d2e]' : 'hover:bg-neutral-200 dark:hover:bg-[#2a2d2e]'} cursor-pointer`}
+          className={`tab-btn ${activeTab === 'properties' ? 'tab-btn-active' : ''}`}
           onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'properties' })}
         >
           Properties
         </button>
         <button
-          className={`px-2 py-1 text-sm rounded ${activeTab === 'transfers' ? 'bg-neutral-200 dark:bg-[#2a2d2e]' : 'hover:bg-neutral-200 dark:hover:bg-[#2a2d2e]'} cursor-pointer`}
+          className={`tab-btn ${activeTab === 'transfers' ? 'tab-btn-active' : ''}`}
           onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'transfers' })}
         >
           Transfers
         </button>
         <button
-          className={`px-2 py-1 text-sm rounded ${activeTab === 'log' ? 'bg-neutral-200 dark:bg-[#2a2d2e]' : 'hover:bg-neutral-200 dark:hover:bg-[#2a2d2e]'} cursor-pointer`}
+          className={`tab-btn ${activeTab === 'log' ? 'tab-btn-active' : ''}`}
           onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'log' as any })}
         >
           Log
@@ -96,7 +96,7 @@ function LogPanel() {
           </select>
         </div>
         <input className="input-theme h-6 text-xs px-2 w-64" placeholder="Search…" value={text} onChange={e => setText(e.target.value)} />
-        <button className="ml-auto px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer" onClick={() => clearAwsLog()}>Clear</button>
+  <button className="ml-auto btn btn-secondary text-xs cursor-pointer" onClick={() => clearAwsLog()}>Clear</button>
       </div>
       <div className="flex-1 overflow-auto">
         <table className="min-w-full text-xs">
@@ -404,18 +404,18 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
               {error && <div className="text-red-600 dark:text-red-400">{error}</div>}
               <div className="ml-auto flex items-center gap-2">
                 {scanToken && !isScanning && !isAborted && (
-                  <button onClick={continueToCompletion} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">Continue collecting</button>
+                  <button onClick={continueToCompletion} className="btn btn-secondary text-xs cursor-pointer">Continue collecting</button>
                 )}
                 {(scanToken || isScanning) && !isAborted && (
-                  <button onClick={abortScan} className="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/30 cursor-pointer">Stop</button>
+                  <button onClick={abortScan} className="btn text-xs cursor-pointer" style={{ backgroundColor: 'rgba(220,38,38,0.12)', color: 'var(--color-fg)' }}>Stop</button>
                 )}
                 {!scanToken && !isScanning && (
-                  <button onClick={() => { setScanToken(undefined); setTotalObjects(0); setTotalFiles(0); setTotalFolders(0); setTotalBytes(0); setPagesScanned(0); setAutoStopped(false); abortRef.current = false; return scanNextPage(); }} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">Rescan</button>
+                  <button onClick={() => { setScanToken(undefined); setTotalObjects(0); setTotalFiles(0); setTotalFolders(0); setTotalBytes(0); setPagesScanned(0); setAutoStopped(false); abortRef.current = false; return scanNextPage(); }} className="btn btn-secondary text-xs cursor-pointer">Rescan</button>
                 )}
                 {isAborted && (
                   <>
                     <span className="opacity-70">Stopped</span>
-                    <button onClick={() => { setIsAborted(false); abortRef.current = false; if (scanToken) { continueToCompletion() } else { scanNextPage() } }} className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">Resume</button>
+                    <button onClick={() => { setIsAborted(false); abortRef.current = false; if (scanToken) { continueToCompletion() } else { scanNextPage() } }} className="btn btn-secondary text-xs cursor-pointer">Resume</button>
                   </>
                 )}
               </div>

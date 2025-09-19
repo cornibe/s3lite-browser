@@ -55,7 +55,7 @@ export default function TabBar() {
           }
 
           return (
-            <div key={t.id} className={`group flex items-center max-w-[22rem] text-sm rounded ${active ? 'selected-row' : 'row-hover'}`}
+            <div key={t.id} className={`group flex items-center max-w-[22rem] text-sm rounded border border-default ${active ? 'selected-row' : ''}`}
                  onMouseEnter={() => setHoverId(t.id)} onMouseLeave={() => setHoverId(null)}>
               <button
                 onClick={() => activateTab(t.id)}
@@ -80,7 +80,7 @@ export default function TabBar() {
         })()}
       </div>
       <div className="ml-auto">
-        <button className="px-2 py-1 row-hover rounded inline-flex items-center gap-1 cursor-pointer" onClick={() => newTab()} aria-label="New tab">
+        <button className="btn btn-secondary inline-flex items-center gap-1" onClick={() => newTab()} aria-label="New tab">
           <PlusIcon />
           <span className="text-sm">New Tab</span>
         </button>
