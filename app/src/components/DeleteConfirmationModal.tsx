@@ -57,16 +57,16 @@ export default function DeleteConfirmationModal({
           </p>
           
           {itemCount && itemCount > 1 && (
-            <div className="p-3 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-md">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+            <div className="alert alert-warn">
+              <p className="text-sm">
                 ⚠️ This will delete {itemCount} {itemType || 'items'}. This action cannot be undone.
               </p>
             </div>
           )}
           
           {(!itemCount || itemCount === 1) && (
-            <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-md">
-              <p className="text-sm text-red-800 dark:text-red-200">
+            <div className="alert alert-error">
+              <p className="text-sm">
                 ⚠️ This action cannot be undone.
               </p>
             </div>
@@ -74,13 +74,11 @@ export default function DeleteConfirmationModal({
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-md text-red-700 dark:text-red-300 text-sm">
-            {error}
-          </div>
+          <div className="alert alert-error mb-4 text-sm">{error}</div>
         )}
 
     <div className="flex justify-end gap-3">
-          <button
+      <button
             type="button"
             onClick={handleClose}
             disabled={isDeleting}
@@ -92,7 +90,7 @@ export default function DeleteConfirmationModal({
             type="button"
             onClick={handleConfirm}
             disabled={isDeleting}
-      className="btn btn-primary"
+    className="btn btn-danger"
           >
             {isDeleting ? 'Deleting...' : 'Delete'}
           </button>

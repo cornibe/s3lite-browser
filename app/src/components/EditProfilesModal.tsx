@@ -318,7 +318,7 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
             <div>config: <span className="opacity-80">{paths.cfg}</span></div>
           </div>
         </div>
-        {error && <div className="mb-2 text-sm text-red-600">{error}</div>}
+  {error && <div className="alert alert-error mb-2 text-sm">{error}</div>}
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-sm opacity-70">Loading…</div>
         ) : (
@@ -624,7 +624,7 @@ function CreateProfileModal({ existing, sourceOptions = [], onCancel, onCreate }
             </>
           )}
         </div>
-        {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+  {err && <div className="alert alert-error mt-2 text-sm">{err}</div>}
         <div className="mt-4 flex justify-end gap-2">
           <button className="btn btn-secondary" disabled={busy} onClick={onCancel}>Cancel</button>
           <button className="btn btn-primary" disabled={busy} onClick={doCreate}>Create</button>
@@ -665,7 +665,7 @@ function RenameProfileModal({ from, existing, onCancel, onRename }: { from: stri
           <label className="block text-sm font-medium mb-1">New name for “{from}”</label>
           <input className="w-full px-2 py-1 rounded border text-sm input-theme" value={to} onChange={e => setTo(e.target.value)} />
         </div>
-        {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+  {err && <div className="alert alert-error mt-2 text-sm">{err}</div>}
         <div className="mt-4 flex justify-end gap-2">
           <button className="btn btn-secondary" disabled={busy} onClick={onCancel}>Cancel</button>
           <button className="btn btn-primary" disabled={busy} onClick={doRename}>Rename</button>

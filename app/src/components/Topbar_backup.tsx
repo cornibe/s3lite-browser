@@ -69,7 +69,7 @@ export default function Topbar() {
   }
 
   return (
-    <div className="border-b bg-neutral-50 dark:bg-neutral-900 px-4 py-2 flex items-center gap-3">
+  <div className="border-b border-default bg-header px-4 py-2 flex items-center gap-3">
       <div className="font-semibold">S3 Browser</div>
       <div className="w-64 shrink-0 flex items-center gap-2">
   {connected && bucket && (
@@ -93,13 +93,13 @@ export default function Topbar() {
       </div>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <label className="text-sm opacity-80">Profile</label>
-  <select className="px-2 py-1 rounded border bg-white/70 dark:bg-neutral-800 text-sm" value={profile ?? ''} onChange={e => { const next = e.target.value || undefined; setIsSwitchingProfile(true); setConnected(false); setProfile(next); selectBucket(undefined); queryClient.clear(); setError(''); setConnectionError(undefined); if (next) { void connect(next) } else { setStatus('Not connected'); setIsSwitchingProfile(false) } }}>
+  <select className="input-theme text-sm h-8 px-2 rounded" value={profile ?? ''} onChange={e => { const next = e.target.value || undefined; setIsSwitchingProfile(true); setConnected(false); setProfile(next); selectBucket(undefined); queryClient.clear(); setError(''); setConnectionError(undefined); if (next) { void connect(next) } else { setStatus('Not connected'); setIsSwitchingProfile(false) } }}>
           <option value="">(none)</option>
           {profiles.map(p => (
             <option key={p.name} value={p.name}>{p.name}{p.isSso ? ' (SSO)' : ''}</option>
           ))}
         </select>
-  <button aria-label="Refresh profiles" title="Refresh profiles" className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 disabled:opacity-50" disabled={refreshing} onClick={() => { trace('ui', 'refresh profiles'); void refreshProfiles() }}>
+  <button aria-label="Refresh profiles" title="Refresh profiles" className="p-1 rounded row-hover disabled:opacity-50" disabled={refreshing} onClick={() => { trace('ui', 'refresh profiles'); void refreshProfiles() }}>
           {refreshing ? (
             <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9" strokeWidth="3"/></svg>
           ) : (
@@ -109,13 +109,13 @@ export default function Topbar() {
       </div>
       <div className="w-72 text-xs text-right whitespace-nowrap">
         {error ? (
-          <span className="text-red-600">{error}</span>
+              <span className="alert alert-error">{error}</span>
         ) : (
           <span className="opacity-70">{connecting ? 'Connecting.€' : (status || (connected ? `Connected${profile ? ` .€ ${profile}` : ''}` : 'Not connected'))}</span>
         )}
       </div>
       <div className="pl-2">
-        <button className="px-2 py-1 text-sm rounded bg-neutral-200 dark:bg-neutral-800" onClick={openSettings}>
+  <button className="btn btn-secondary text-sm" onClick={openSettings}>
           Settings
         </button>
       </div>

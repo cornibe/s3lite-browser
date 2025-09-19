@@ -75,9 +75,7 @@ export default function MountLocationModal({ isOpen, onClose, onSubmit, initialB
             </p>
           </div>
           {error && (
-            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-md text-red-700 dark:text-red-300 text-sm">
-              {error}
-            </div>
+            <div className="alert alert-error mb-4 text-sm">{error}</div>
           )}
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>

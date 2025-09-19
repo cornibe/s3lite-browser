@@ -135,7 +135,7 @@ function LogPanel() {
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] max-w-[95vw] rounded menu-bg border border-default shadow p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold">Operation details</div>
-              <button className="px-2 py-1 text-xs rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer" onClick={() => setSelected(null)}>Close</button>
+              <button className="btn btn-secondary text-xs cursor-pointer" onClick={() => setSelected(null)}>Close</button>
             </div>
             <div className="text-sm space-y-2">
               <div><span className="opacity-70">Time:</span> {new Date(selected.ts || Date.now()).toLocaleString()}</div>
@@ -147,7 +147,7 @@ function LogPanel() {
                 <div><span className="opacity-70">Duration:</span> {typeof selected.durationMs === 'number' ? `${selected.durationMs} ms` : '-'}</div>
               </div>
               {selected.error && (
-                <div className="p-2 rounded border border-red-300 dark:border-red-800 bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300">
+                <div className="alert alert-error">
                   <div className="font-semibold mb-1">Error</div>
                   <div className="whitespace-pre-wrap break-words">{selected.error}</div>
                 </div>
@@ -401,7 +401,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
             <div><span className="opacity-70">Total size:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{formatSize(totalBytes)}</div>
             <div className="col-span-2 flex flex-wrap items-center gap-2 mt-2">
               <div className="opacity-60">Pages scanned: {pagesScanned}</div>
-              {error && <div className="text-red-600 dark:text-red-400">{error}</div>}
+              {error && <div className="alert alert-error">{error}</div>}
               <div className="ml-auto flex items-center gap-2">
                 {scanToken && !isScanning && !isAborted && (
                   <button onClick={continueToCompletion} className="btn btn-secondary text-xs cursor-pointer">Continue collecting</button>

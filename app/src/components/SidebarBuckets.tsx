@@ -174,7 +174,7 @@ export default function SidebarBuckets() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowMountModal(true)}
-                className="text-xs px-2 py-1 bg-[#16a085] text-white rounded hover:bg-[#1abc9c] transition-colors inline-flex items-center gap-1"
+                className="btn btn-primary text-xs inline-flex items-center gap-1"
                 title="Mount S3 location (bucket and optional path)"
               >
                 <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden>
@@ -185,7 +185,7 @@ export default function SidebarBuckets() {
               </button>
               <button
                 onClick={() => setShowCreateBucket(true)}
-                className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] transition-colors"
+                className="btn btn-primary text-xs"
                 title="Create new bucket"
               >
                 + New
@@ -280,7 +280,7 @@ export default function SidebarBuckets() {
               ref={mountMenuRef}
             >
               <button
-                className="block w-full text-left px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10"
+                className="block w-full text-left px-3 py-2 row-hover"
                 onClick={() => {
                   const m = settings.mounts[mountMenu.idx]
                   setEditMount({ idx: mountMenu.idx, bucket: m.bucket, prefix: m.prefix })
@@ -290,7 +290,7 @@ export default function SidebarBuckets() {
                 Edit
               </button>
               <button
-                className="block w-full text-left px-3 py-2 text-red-600 hover:bg-black/5 dark:hover:bg-white/10"
+                className="block w-full text-left px-3 py-2 text-red-600 row-hover"
                 onClick={() => {
                   const next = settings.mounts.filter((_: any, i: number) => i !== mountMenu.idx)
                   setSettings({ mounts: next })

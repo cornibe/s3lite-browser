@@ -162,7 +162,7 @@ export default function TransferQueue() {
           )
         }
         return (
-          <div key={job.id} className={`mb-3 rounded ${job.status === 'failed' ? 'bg-red-500/10 dark:bg-red-900/20' : ''}`}>
+          <div key={job.id} className={`mb-3 rounded ${job.status === 'failed' ? 'alert alert-error' : ''}`}>
             <div role="row" className="grid grid-cols-[minmax(10rem,1fr)_12rem_14rem_8rem_8rem_10rem] items-center gap-3 py-1">
               <div role="cell" className="truncate" title={title}>
                 {job.type === 'prefix' && job.prefix && job.prefix !== '' ? `Folder: ${title}` : title}

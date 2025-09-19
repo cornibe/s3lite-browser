@@ -20,6 +20,16 @@
     --color-overlay: rgba(255, 255, 255, 0.6);
     --color-menu: #ffffff;
     --color-placeholder: #6b7280;
+  /* Alert semantic tokens (light) */
+  --color-error-bg: #fee2e2;      /* red-100 */
+  --color-error-border: #fecaca;  /* red-200 */
+  --color-error-text: #7f1d1d;    /* red-800 */
+  --color-warn-bg: #fef3c7;       /* amber-100 */
+  --color-warn-border: #fde68a;   /* amber-200 */
+  --color-warn-text: #78350f;     /* amber-800 */
+  --color-info-bg: #dbeafe;       /* blue-100 */
+  --color-info-border: #bfdbfe;   /* blue-200 */
+  --color-info-text: #1e40af;     /* blue-800 */
   }
 
   /* Theme tokens (dark) */
@@ -37,6 +47,16 @@
     --color-overlay: rgba(0, 0, 0, 0.4);
     --color-menu: #252526;
     --color-placeholder: #9ca3af;
+  /* Alert semantic tokens (dark) */
+  --color-error-bg: rgba(220, 38, 38, 0.18);
+  --color-error-border: #7f1d1d;
+  --color-error-text: #fecaca;
+  --color-warn-bg: rgba(245, 158, 11, 0.18);
+  --color-warn-border: #78350f;
+  --color-warn-text: #fde68a;
+  --color-info-bg: rgba(59, 130, 246, 0.18);
+  --color-info-border: #1e3a8a;
+  --color-info-text: #bfdbfe;
   }
 
   /* Set base background/text colors for both themes */
@@ -68,6 +88,8 @@
   .btn-secondary:hover { background-color: var(--color-hover); }
   .btn-primary { background-color: #0e639c; color: #ffffff; }
   .btn-primary:hover { background-color: #1177bb; }
+  .btn-danger { background-color: #b91c1c; color: #ffffff; }
+  .btn-danger:hover { background-color: #a31616; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Subtle zebra striping for tables; never override selected rows */
@@ -77,4 +99,10 @@
   .tab-btn { padding: 0.25rem 0.5rem; font-size: 0.875rem; line-height: 1.25rem; border-radius: 0.375rem; border: 1px solid var(--color-border); background-color: transparent; color: var(--color-fg); }
   .tab-btn:hover { background-color: var(--color-hover); }
   .tab-btn.tab-btn-active { background-color: var(--color-hover); }
+
+  /* Alerts */
+  .alert { padding: 0.5rem; border-radius: 0.375rem; font-size: 0.875rem; border: 1px solid transparent; }
+  .alert-error { background-color: var(--color-error-bg); color: var(--color-error-text); border-color: var(--color-error-border); }
+  .alert-warn { background-color: var(--color-warn-bg); color: var(--color-warn-text); border-color: var(--color-warn-border); }
+  .alert-info { background-color: var(--color-info-bg); color: var(--color-info-text); border-color: var(--color-info-border); }
 }

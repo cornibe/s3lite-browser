@@ -777,7 +777,7 @@ export default function ObjectExplorer() {
     return (
       <div className="flex-1 flex items-center justify-center bg-panel">
         <div className="text-center p-6">
-          <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-neutral-100 dark:bg-[#2a2d2e] flex items-center justify-center">
+          <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-header flex items-center justify-center">
             <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 opacity-70"><path d="M3 12h2a7 7 0 0 1 7-7V3A9 9 0 0 0 3 12zm2 0H3a9 9 0 0 0 9 9v-2a7 7 0 0 1-7-7zm16 0a9 9 0 0 0-9-9v2a7 7 0 0 1 7 7h2zm-2 0a7 7 0 0 1-7 7v2a9 9 0 0 0 9-9h-2z"/></svg>
           </div>
           <h2 className="text-lg font-semibold mb-2">Not connected</h2>
@@ -795,7 +795,7 @@ export default function ObjectExplorer() {
             <div className="relative">
               <button
                 ref={copyBtnRef}
-                className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1 row-hover transition-colors"
                 title="Copy S3 path"
                 onClick={async () => {
                   const uri = `s3://${bucket}${prefix ? `/${prefix}` : '/'}`
@@ -875,21 +875,21 @@ export default function ObjectExplorer() {
             <>
               <button
                 onClick={() => refetch()}
-                className="text-xs px-2 py-1 bg-[#0e639c] text-white rounded hover:bg-[#1177bb] transition-colors cursor-pointer"
+                className="btn btn-primary text-xs cursor-pointer"
                 title="Refresh folder contents"
               >
                 ↻ Refresh
               </button>
               <button
                 onClick={() => uploadInputRef.current?.click()}
-                className="text-xs px-2 py-1 bg-[#2d7d46] text-white rounded hover:bg-[#2fa866] transition-colors cursor-pointer"
+                className="btn btn-primary text-xs cursor-pointer"
                 title="Upload files to this location"
               >
                 ↑ Upload
               </button>
               <button
                 onClick={() => setShowCreateFolder(true)}
-                className="text-xs px-2 py-1 bg-[#16a085] text-white rounded hover:bg-[#1abc9c] transition-colors cursor-pointer"
+                className="btn btn-primary text-xs cursor-pointer"
                 title="Create new folder"
               >
                 + Folder
@@ -902,7 +902,7 @@ export default function ObjectExplorer() {
                     console.error('download failed', e)
                   }
                 }}
-                className="text-xs px-2 py-1 bg-[#8e44ad] text-white rounded hover:bg-[#9b59b6] transition-colors disabled:opacity-50 cursor-pointer"
+                className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
                 title={selectedSet.size > 1 ? `Download ${selectedSet.size} selected items` : 'Download selected item'}
                 disabled={selectedSet.size === 0 && !selectedKey}
               >
@@ -917,7 +917,7 @@ export default function ObjectExplorer() {
                     if (entry) handleDelete(entry)
                   }
                 }}
-                className="text-xs px-2 py-1 bg-[#b33939] text-white rounded hover:bg-[#c0392b] transition-colors disabled:opacity-50 cursor-pointer"
+                className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
                 title={selectedSet.size > 1 ? `Delete ${selectedSet.size} selected items` : 'Delete selected item'}
                 disabled={selectedSet.size === 0 && !selectedKey}
               >
@@ -946,7 +946,7 @@ export default function ObjectExplorer() {
         {/* Drop/upload feedback toast */}
         {dropFeedback && (
           <div className="pointer-events-none absolute top-3 right-3 z-20">
-            <div className={`px-3 py-2 rounded shadow border text-sm menu-bg border-default ${dropFeedback.stage === 'error' ? 'text-red-600 dark:text-red-400' : 'text-app'}`}>
+            <div className={`text-sm shadow ${dropFeedback.stage === 'error' ? 'alert alert-error' : 'menu-bg border border-default px-3 py-2 rounded'}`}>
               {dropFeedback.message}
             </div>
           </div>
@@ -969,8 +969,8 @@ export default function ObjectExplorer() {
               <h2 className="text-lg font-semibold mb-2">Connection failed</h2>
               <p className="text-sm opacity-80 mb-4">{connectionError}</p>
               <div className="flex items-center justify-center gap-3">
-                <button className="px-3 py-1 text-sm rounded bg-[#0e639c] text-white hover:bg-[#1177bb] cursor-pointer" onClick={() => refetch()}>Retry</button>
-                <button className="px-3 py-1 text-sm rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer" onClick={() => openSettings()}>Settings</button>
+                <button className="btn btn-primary text-sm cursor-pointer" onClick={() => refetch()}>Retry</button>
+                <button className="btn btn-secondary text-sm cursor-pointer" onClick={() => openSettings()}>Settings</button>
               </div>
             </div>
           </div>
@@ -998,7 +998,7 @@ export default function ObjectExplorer() {
           visibleItems.length === 0 ? (
             <div className="h-full w-full flex items-center justify-center p-6">
               <div className="max-w-xl text-center">
-                <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-neutral-100 dark:bg-[#2a2d2e] flex items-center justify-center text-app/70">
+                <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-header flex items-center justify-center text-app/70">
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
                 </div>
                 <h2 className="text-lg font-semibold mb-2">{objectFilter ? 'No items match your filter' : 'This folder is empty'}</h2>
@@ -1109,7 +1109,7 @@ export default function ObjectExplorer() {
         )}
     {hasNextPage && (
           <div className="px-3 py-3">
-  <button disabled={isFetchingNextPage} onClick={() => { trace('ui', 'load more'); fetchNextPage() }} className="px-3 py-1 rounded bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] cursor-pointer">
+  <button disabled={isFetchingNextPage} onClick={() => { trace('ui', 'load more'); fetchNextPage() }} className="btn btn-secondary text-sm disabled:opacity-50 cursor-pointer">
               {isFetchingNextPage ? 'Loading…' : 'Load more'}
             </button>
           </div>
@@ -1126,7 +1126,7 @@ export default function ObjectExplorer() {
           <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
           <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
           <div className="border-t border-default"></div>
-          <button className="block w-full text-left px-3 py-2 hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
+          <button className="block w-full text-left px-3 py-2 text-red-600 row-hover cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
             Delete
           </button>
         </div>
@@ -1138,7 +1138,7 @@ export default function ObjectExplorer() {
       <div className="relative z-10 w-[560px] max-w-[95vw] rounded menu-bg border border-default p-4 shadow">
             <div className="flex items-center justify-between mb-3">
         <div className="font-semibold">Properties</div>
-              <button className="px-2 py-1 text-xs bg-neutral-200 dark:bg-[#2a2d2e] hover:bg-neutral-300 dark:hover:bg-[#323334] rounded cursor-pointer" onClick={() => setShowProps(null)}>Close</button>
+              <button className="btn btn-secondary text-xs cursor-pointer" onClick={() => setShowProps(null)}>Close</button>
             </div>
             {showProps.type === 'folder' ? (
       <div className="text-sm opacity-70">Use bottom Properties tab for details.</div>
