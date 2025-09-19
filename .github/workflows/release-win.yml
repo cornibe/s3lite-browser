@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -40,7 +41,7 @@ jobs:
           $pkg.version = $version
           $pkg | ConvertTo-Json -Depth 20 | Out-File -FilePath $pkgPath -Encoding utf8
 
-      - name: Use Node.js 20
+  - name: Use Node.js 20 (no cache)
         uses: actions/setup-node@v4
         with:
           node-version: 20
