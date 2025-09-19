@@ -64,7 +64,7 @@ npm run build:win
 Notes:
 
 - Binaries are unsigned, so Windows SmartScreen may warn on first run. Code signing will remove this in a future update.
-- The build outputs are written to `app/dist/release/` locally.
+- The build outputs are written to `app/dist/` locally.
 
 ## Project Structure
 See [AGENTS.md](./AGENTS.md) for structure and best practices.

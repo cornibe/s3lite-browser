@@ -15,14 +15,19 @@ jobs:
       run:
         working-directory: app
     env:
-      ELECTRON_CACHE: ${{ runner.temp }}/electron
-      ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder
       # electron-builder uses GH_TOKEN; GitHub Actions exposes GITHUB_TOKEN
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set cache env vars
+        shell: pwsh
+        run: |
+          $cacheRoot = $env:RUNNER_TEMP
+          "ELECTRON_CACHE=$cacheRoot\electron" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ELECTRON_BUILDER_CACHE=$cacheRoot\electron-builder" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Derive version from tag
         if: startsWith(github.ref_name, 'v')
