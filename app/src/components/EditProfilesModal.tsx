@@ -65,6 +65,8 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
   const [selected, setSelected] = useState(undefined as string | undefined)
   const [editing, setEditing] = useState(null as { name: string } | null)
   const rightRef = useRef(null as HTMLTextAreaElement | null)
+  const listContainerRef = useRef(null as HTMLUListElement | null)
+  const itemRefs = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
     if (!isOpen) return
@@ -121,6 +123,14 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
     })
   }, [profiles, combined, query])
 
+  // Ensure a valid selection exists within the filtered set
+  useEffect(() => {
+    if (filteredProfiles.length === 0) return
+    if (!selected || !filteredProfiles.includes(selected)) {
+      setSelected(filteredProfiles[0])
+    }
+  }, [filteredProfiles, selected])
+
   const findSectionBounds = React.useCallback((text: string, sectionName: string) => {
     if (!sectionName) return null
     
@@ -176,6 +186,15 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
       rightRef.current.focus()
     }
   }, [selected, editing, combinedDisplayText, findSectionBounds])
+
+  // Keep the selected item visible in the list
+  useEffect(() => {
+    if (!selected) return
+    const el = itemRefs.current.get(selected)
+    if (el) {
+      try { el.scrollIntoView({ block: 'nearest' }) } catch {}
+    }
+  }, [selected, filteredProfiles])
 
 
   function openEdit() { if (selected) setEditing({ name: selected }) }
@@ -331,10 +350,44 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              <ul className="text-sm">
+              <ul
+                ref={listContainerRef}
+                className="text-sm outline-none"
+                role="listbox"
+                aria-label="AWS profiles"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  // Avoid interfering with text input
+                  const tag = (e.target as HTMLElement)?.tagName
+                  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+                  if (filteredProfiles.length === 0) return
+                  const idx = Math.max(0, filteredProfiles.indexOf(selected || ''))
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault(); e.stopPropagation()
+                    const next = selected ? (idx + 1) % filteredProfiles.length : 0
+                    setSelected(filteredProfiles[next])
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault(); e.stopPropagation()
+                    const next = selected ? (idx - 1 + filteredProfiles.length) % filteredProfiles.length : filteredProfiles.length - 1
+                    setSelected(filteredProfiles[next])
+                  } else if (e.key === 'Home') {
+                    e.preventDefault(); e.stopPropagation()
+                    setSelected(filteredProfiles[0])
+                  } else if (e.key === 'End') {
+                    e.preventDefault(); e.stopPropagation()
+                    setSelected(filteredProfiles[filteredProfiles.length - 1])
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault(); e.stopPropagation()
+                    if (selected) openEdit()
+                  }
+                }}
+              >
                 {filteredProfiles.map(name => (
-                  <li key={name}>
+                  <li key={name} role="option" aria-selected={selected === name}>
                     <button
+                      ref={(el) => {
+                        if (el) itemRefs.current.set(name, el); else itemRefs.current.delete(name)
+                      }}
                       className={`w-full text-left px-2 py-1 rounded ${selected === name ? 'selected-row' : 'row-hover'}`}
                       onClick={() => setSelected(name)}
                       onDoubleClick={() => openEditFor(name)}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type React from 'react'
 import { useBuckets } from '../lib/query'
 import { useStore } from '../lib/store'
 import { trace, warn, info } from '../lib/log'
@@ -19,6 +20,10 @@ export default function SidebarBuckets() {
   const [mountMenu, setMountMenu] = useState<{ idx: number; x: number; y: number } | null>(null)
   const [editMount, setEditMount] = useState<{ idx: number; bucket: string; prefix?: string } | null>(null)
   const mountMenuRef = useRef<HTMLDivElement | null>(null)
+  const bucketListRef = useRef<HTMLUListElement | null>(null)
+  const bucketItemRefs = useRef(new Map<string, HTMLButtonElement>())
+  const mountedListRef = useRef<HTMLUListElement | null>(null)
+  const mountedItemRefs = useRef(new Map<string, HTMLButtonElement>())
   // Profiles at the top of sidebar
   useEffect(() => { void refreshProfiles() }, [])
   // Keep Profile section expanded on new tab
@@ -80,6 +85,49 @@ export default function SidebarBuckets() {
     if (!connected) return
     if (!bucket && data && data.length > 0) { selectBucket(data[0]); setNavSelection({ type: 'bucket', id: data[0] }) }
   }, [connected, bucket, data, selectBucket, setNavSelection])
+
+  // Keep active bucket scrolled into view
+  useEffect(() => {
+    const id = navSelection?.type === 'bucket' ? navSelection.id : undefined
+    if (!id) return
+    const el = bucketItemRefs.current.get(id)
+    if (el) {
+      try { el.scrollIntoView({ block: 'nearest' }) } catch {}
+    }
+  }, [navSelection])
+
+  // Keep active mounted location scrolled into view
+  useEffect(() => {
+    const id = navSelection?.type === 'mount' ? navSelection.id : undefined
+    if (!id) return
+    const el = mountedItemRefs.current.get(id)
+    if (el) {
+      try { el.scrollIntoView({ block: 'nearest' }) } catch {}
+    }
+  }, [navSelection])
+
+  // Keyboard navigation helper for lists
+  function handleListKey(e: React.KeyboardEvent, items: string[], currentId: string | undefined, onSelect: (id: string) => void) {
+    if (items.length === 0) return
+    const idx = Math.max(0, currentId ? items.indexOf(currentId) : -1)
+    if (e.key === 'ArrowDown') {
+      e.preventDefault(); e.stopPropagation()
+      const next = idx >= 0 ? (idx + 1) % items.length : 0
+      onSelect(items[next])
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation()
+      const next = idx >= 0 ? (idx - 1 + items.length) % items.length : items.length - 1
+      onSelect(items[next])
+    } else if (e.key === 'Home') {
+      e.preventDefault(); e.stopPropagation(); onSelect(items[0])
+    } else if (e.key === 'End') {
+      e.preventDefault(); e.stopPropagation(); onSelect(items[items.length - 1])
+    } else if (e.key === 'Enter') {
+      e.preventDefault(); e.stopPropagation()
+      if (idx >= 0) onSelect(items[idx])
+      else onSelect(items[0])
+    }
+  }
 
   // Close the mount context menu when clicking outside or pressing Escape
   useEffect(() => {
@@ -211,7 +259,21 @@ export default function SidebarBuckets() {
   {/* Connection errors are displayed in the main panel to avoid clutter. */}
   {(!isSwitchingProfile && connected && !isError) && (
         (data && data.length > 0) ? (
-      <ul className={`text-sm bg-header`}>
+      <ul
+        ref={bucketListRef}
+        className={`text-sm bg-header outline-none`}
+        role="listbox"
+        aria-label="Buckets"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          // Do not handle when typing into filter input
+          const tag = (e.target as HTMLElement)?.tagName
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+          const visible = data.filter(name => name.toLowerCase().includes(bucketFilter.trim().toLowerCase()))
+          const current = navSelection?.type === 'bucket' ? navSelection.id : undefined
+          handleListKey(e, visible, current, (id) => { trace('ui', 'select bucket (kb)', { bucket: id }); selectBucket(id); setNavSelection({ type: 'bucket', id }) })
+        }}
+      >
     {data
               .filter(name => name.toLowerCase().includes(bucketFilter.trim().toLowerCase()))
               .map(name => {
@@ -220,6 +282,9 @@ export default function SidebarBuckets() {
               return (
                 <li key={name}>
                   <button
+        ref={(el) => { if (el) bucketItemRefs.current.set(name, el); else bucketItemRefs.current.delete(name) }}
+        role="option"
+        aria-selected={isActive}
         onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name); setNavSelection({ type: 'bucket', id: name }) }}
           className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row font-medium' : ''}`}
                   >
@@ -246,7 +311,23 @@ export default function SidebarBuckets() {
             <div className="absolute left-0 top-0 h-full border-l border-default opacity-60" style={{ height: '100%' }} />
           </div>
           <div className="px-3 pt-3 pb-2 text-xs uppercase opacity-70 tracking-wide">Mounted</div>
-          <ul className="text-sm">
+          <ul
+            ref={mountedListRef}
+            className="text-sm outline-none"
+            role="listbox"
+            aria-label="Mounted locations"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              const items = (settings?.mounts || []).map((m: any, idx: number) => `${m.bucket}:${m.prefix ?? ''}`)
+              const current = navSelection?.type === 'mount' ? navSelection.id : undefined
+              handleListKey(e, items, current, (id) => {
+                const [b, p] = id.split(':')
+                selectBucket(b)
+                setPrefix(p || '')
+                setNavSelection({ type: 'mount', id })
+              })
+            }}
+          >
             {settings.mounts.map((m: { bucket: string; prefix?: string }, idx: number) => {
               const id = `${m.bucket}:${m.prefix ?? ''}`
               const isActive = navSelection?.type === 'mount' && navSelection?.id === id
@@ -258,6 +339,9 @@ export default function SidebarBuckets() {
                   setMountMenu({ idx, x: e.clientX, y: e.clientY })
                 }}>
                   <button
+                    ref={(el) => { if (el) mountedItemRefs.current.set(id, el); else mountedItemRefs.current.delete(id) }}
+                    role="option"
+                    aria-selected={isActive}
                     onClick={() => { selectBucket(m.bucket); setPrefix(m.prefix ?? ''); setNavSelection({ type: 'mount', id }); }}
                     className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row' : ''}`}
                     title={`s3://${label}`}
