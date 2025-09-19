@@ -45,5 +45,26 @@ To collect logs for support:
 npm run make
 ```
 
+## Release (Windows)
+
+Tagged releases build Windows installers automatically via GitHub Actions.
+
+- Trigger: push a semver tag like `v0.1.0` to the repository.
+- Outputs: NSIS `.exe`, MSI `.msi`, and `latest.yml` update manifest.
+- Where: attached to the GitHub Release created by the workflow; also uploaded as workflow artifacts for download from the run page.
+
+Local build to reproduce release outputs:
+
+```bash
+cd app
+npm install
+npm run build:win
+```
+
+Notes:
+
+- Binaries are unsigned, so Windows SmartScreen may warn on first run. Code signing will remove this in a future update.
+- The build outputs are written to `app/dist/release/` locally.
+
 ## Project Structure
 See [AGENTS.md](./AGENTS.md) for structure and best practices.

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import optimizer from 'vite-plugin-optimizer'
 
 export default defineConfig({
+  base: './',
   plugins: [
     react(),
     optimizer({
