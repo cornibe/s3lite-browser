@@ -35,7 +35,7 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           Write-Host "Setting app version to $version"
-          $pkgPath = Join-Path $pwd 'app' 'package.json'
+          $pkgPath = Join-Path $pwd 'package.json'
           $pkg = Get-Content $pkgPath | ConvertFrom-Json
           $pkg.version = $version
           $pkg | ConvertTo-Json -Depth 20 | Out-File -FilePath $pkgPath -Encoding utf8
