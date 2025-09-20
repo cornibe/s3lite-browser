@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -19,8 +19,8 @@ jobs:
       # electron-builder uses GH_TOKEN; GitHub Actions exposes GITHUB_TOKEN
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        name: Checkout
 
       - name: Set cache env vars
         shell: pwsh
@@ -40,10 +40,10 @@ jobs:
           $pkg.version = $version
           $pkg | ConvertTo-Json -Depth 20 | Out-File -FilePath $pkgPath -Encoding utf8
 
-  - name: Use Node.js 20 (no cache)
+      - name: Use Node.js 20 (no cache)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
 
       - name: Install dependencies
         shell: pwsh
