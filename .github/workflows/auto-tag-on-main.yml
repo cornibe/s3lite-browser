@@ -1,0 +1,83 @@
+name: Auto Tag on Main
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create version tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # ensure tags are available
+
+      - name: Set up Node (for reading package.json)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch tags
+        run: |
+          git fetch --tags --force
+
+      - name: Skip if HEAD already tagged
+        id: headtag
+        run: |
+          if git tag --points-at HEAD | grep -E '^v[0-9]'; then
+            echo "head_is_tagged=true" >> $GITHUB_OUTPUT
+          else
+            echo "head_is_tagged=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine next version
+        id: ver
+        if: steps.headtag.outputs.head_is_tagged == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Find latest semver tag starting with v
+          latest_tag=$(git tag -l 'v*' --sort=-version:refname | head -n 1 || true)
+          if [[ -n "$latest_tag" ]]; then
+            base_version=${latest_tag#v}
+          else
+            # No tags yet; use app/package.json version
+            base_version=$(node -e "console.log(require('./app/package.json').version || '0.1.0')")
+          fi
+          IFS='.' read -r major minor patch <<< "$base_version"
+          patch=${patch:-0}
+          next_patch=$((patch + 1))
+          next_version="$major.$minor.$next_patch"
+          echo "base=$base_version" >> $GITHUB_OUTPUT
+          echo "next=$next_version" >> $GITHUB_OUTPUT
+          echo "tag=v$next_version" >> $GITHUB_OUTPUT
+          echo "Determined next version: v$next_version (base $base_version)"
+
+      - name: Create and push tag
+        if: steps.headtag.outputs.head_is_tagged == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=${{ steps.ver.outputs.tag }}
+          echo "Creating tag $tag for commit $(git rev-parse --short HEAD)"
+          git tag -a "$tag" -m "Automated tag for main: $tag"
+          git push origin "$tag"
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.headtag.outputs.head_is_tagged }}" = "true" ]; then
+            echo "HEAD already has a version tag; skipping."
+          else
+            echo "Pushed tag ${{ steps.ver.outputs.tag }} (from ${{ steps.ver.outputs.base }})"
+          fi
