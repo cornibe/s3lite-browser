@@ -117,36 +117,35 @@ function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab, showToast } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab, showToast, selectBucket } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
-  const listRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const lastDragPointRef = useRef<{ x: number; y: number } | null>(null)
+  const listRef = useRef(null as any)
+  const contentRef = useRef(null as any)
+  const lastDragPointRef = useRef(null as any)
   const [copied, setCopied] = useState(false)
-  const copyTimer = useRef<number | undefined>(undefined)
-  const copyBtnRef = useRef<HTMLButtonElement | null>(null)
-  const uploadInputRef = useRef<HTMLInputElement | null>(null)
+  const copyTimer = useRef(undefined as any)
+  const copyBtnRef = useRef(null as any)
+  const uploadInputRef = useRef(null as any)
   // Drop/upload feedback toast
-  const [dropFeedback, setDropFeedback] = useState<{ stage: 'preparing' | 'starting' | 'queued' | 'error'; message: string } | null>(null)
-  const dropFeedbackTimer = useRef<number | undefined>(undefined)
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: Entry } | null>(null)
-  const ctxMenuRef = useRef<HTMLDivElement | null>(null)
-  const [showProps, setShowProps] = useState<{ type: 'object' | 'folder'; data: any } | null>(null)
+  const [dropFeedback, setDropFeedback] = useState(null as any)
+  const dropFeedbackTimer = useRef(undefined as any)
+  const [tooltipPos, setTooltipPos] = useState(null as any)
+  const [contextMenu, setContextMenu] = useState(null as any)
+  const ctxMenuRef = useRef(null as any)
+  const [showProps, setShowProps] = useState(null as any)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
-  const [deleteConfirmation, setDeleteConfirmation] = useState<{
-    items: Entry[]
-    title: string
-    message: string
-  } | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null as any)
+  // Edit path state
+  const [editingPath, setEditingPath] = useState(false)
+  const [pathInput, setPathInput] = useState('')
   // UI: filter and sorting state
   const [objectFilter, setObjectFilter] = useState('')
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'lastModified'>('name')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortBy, setSortBy] = useState('name')
+  const [sortDir, setSortDir] = useState('asc')
   // Multi-select state (local to explorer)
-  const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set())
-  const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
-  const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
+  const [selectedSet, setSelectedSet] = useState(new Set() as any)
+  const [anchorIndex, setAnchorIndex] = useState(null as any)
+  const [focusedIndex, setFocusedIndex] = useState(null as any)
 
   // Ensure UI has a chance to paint before continuing heavy work
   const yieldToPaint = async () => {
@@ -159,8 +158,8 @@ export default function ObjectExplorer() {
   // Refs to latest values for global drop handlers (avoid stale closure)
   const bucketRef = useRef(bucket)
   const prefixRef = useRef(prefix)
-  const selectedKeyRef = useRef<string | undefined>(selectedKey)
-  const itemsRef = useRef<Entry[]>([])
+  const selectedKeyRef = useRef(selectedKey as any)
+  const itemsRef = useRef([] as any)
   const registerJobRef = useRef(registerJobForActiveTab)
   useEffect(() => { bucketRef.current = bucket }, [bucket])
   useEffect(() => { prefixRef.current = prefix }, [prefix])
@@ -182,6 +181,58 @@ export default function ObjectExplorer() {
       setSelectedKey(undefined)
     }
   }, [connected, setPrefix, setSelectedKey])
+
+  // Build current s3 URI string
+  const currentUri = useMemo(() => {
+    if (!bucket) return ''
+    const p = prefix ? (prefix.endsWith('/') ? prefix : prefix + '/') : ''
+    // if prefix not empty and does not end with '/', keep as-is so object-like prefixes are preserved
+    const uri = `s3://${bucket}${prefix ? `/${prefix}` : '/'}`
+    return uri
+  }, [bucket, prefix])
+
+  function normalizeS3Input(input: string): { bucket: string; prefix: string } | null {
+    let s = (input || '').trim()
+    if (!s) return null
+    if (s.toLowerCase().startsWith('s3://')) s = s.slice(5)
+    // allow inputs like bucket or bucket/ or bucket/path
+    s = s.replace(/^\/+/, '') // drop leading slashes
+    const firstSlash = s.indexOf('/')
+    const bkt = (firstSlash >= 0 ? s.slice(0, firstSlash) : s).trim()
+    const rest = (firstSlash >= 0 ? s.slice(firstSlash + 1) : '').trim()
+    if (!bkt) return null
+    // do not force trailing slash; keep user intent
+    return { bucket: bkt, prefix: rest }
+  }
+
+  async function tryNavigateTo(input: string) {
+    const parsed = normalizeS3Input(input)
+    if (!parsed) {
+      showToast({ type: 'error', message: 'Enter a valid S3 path like s3://bucket[/prefix]' })
+      return
+    }
+    const targetBucket = parsed.bucket
+    const targetPrefix = parsed.prefix
+    const prevBucket = bucket
+    const prevPrefix = prefix
+    try {
+      // Validate access by attempting a small LIST
+      await (window as any).api.s3.listObjects({ bucket: targetBucket, prefix: targetPrefix, maxKeys: 1 })
+      // If ok, switch location
+      if (prevBucket !== targetBucket) {
+        selectBucket(targetBucket)
+      }
+      setPrefix(targetPrefix || '')
+      setEditingPath(false)
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Unable to open path'
+      showToast({ type: 'error', message: msg })
+      // Revert visual input to current location
+      setPathInput(currentUri || '')
+      setEditingPath(false)
+      // No state changes applied before validation, so nothing else to revert
+    }
+  }
 
   // Listen for upload completion events to auto-refresh the object list
   useEffect(() => {
@@ -272,7 +323,7 @@ export default function ObjectExplorer() {
 
   // Show a short, centered overlay while refetching to provide visual feedback
   const [showRefreshOverlay, setShowRefreshOverlay] = useState(false)
-  const refreshStartRef = useRef<number | null>(null)
+  const refreshStartRef = useRef(null as any)
   useEffect(() => {
     const active = Boolean(bucket) && !isFetchingNextPage && isFetching && !isLoading && !connectionError
     if (active) {
@@ -300,7 +351,7 @@ export default function ObjectExplorer() {
     if (item.type === 'folder') { trace('ui', 'open folder', { prefix: item.data.prefix }); setPrefix(item.data.prefix) }
   }
 
-  function onKeyDown(e: React.KeyboardEvent) {
+  function onKeyDown(e: any) {
     if (!visibleItems.length) return
     const currentIdx = focusedIndex ?? visibleItems.findIndex(it => it.type === 'object' ? it.data.key === selectedKey : it.data.prefix === selectedKey)
     if (e.key === 'ArrowDown') {
@@ -348,7 +399,7 @@ export default function ObjectExplorer() {
     }
   }
 
-  function onDragOver(e: React.DragEvent) {
+  function onDragOver(e: any) {
     if (!bucket) { trace('ui', 'drag ignored no bucket'); return }
     e.preventDefault()
     try { e.dataTransfer.dropEffect = 'copy' } catch {}
@@ -500,7 +551,7 @@ export default function ObjectExplorer() {
     return Array.from(new Set(out))
   }
 
-  async function onDrop(e: React.DragEvent) {
+  async function onDrop(e: any) {
   if (!bucket) { trace('ui', 'drop ignored no bucket'); await (window as any).api.ui.showMessageBox({ type: 'error', title: 'Upload failed', message: 'No bucket selected' }); return }
     e.preventDefault()
     info('ui', 'react drop event', {
@@ -667,7 +718,7 @@ export default function ObjectExplorer() {
     }
   }
 
-  function onContextMenu(e: React.MouseEvent, item: Entry) {
+  function onContextMenu(e: any, item: Entry) {
     e.preventDefault()
     setSelected(item.type === 'object' ? item.data.key : item.data.prefix, item.type)
     setContextMenu({ x: e.clientX, y: e.clientY, item })
@@ -872,31 +923,57 @@ export default function ObjectExplorer() {
                 document.body
               )}
             </div>
-            <span className="opacity-70">s3://</span>
-            {prefix ? (
-              <button
-                className="hover:underline cursor-pointer link-accent"
-                onClick={() => { trace('ui', 'breadcrumb bucket'); setPrefix('') }}
-                title={`Go to s3://${bucket}/`}
-              >
-                {bucket}
-              </button>
+            {/* Path: editable when toggled */}
+            {editingPath ? (
+              <input
+                autoFocus
+                value={pathInput}
+                onChange={(e) => setPathInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); void tryNavigateTo(pathInput) }
+                  else if (e.key === 'Escape') { setEditingPath(false); setPathInput(currentUri || '') }
+                }}
+                onFocus={(e) => { e.currentTarget.select() }}
+                className="input-theme h-7 w-[32rem] max-w-[60vw] px-2 rounded"
+                placeholder="s3://bucket/path"
+              />
             ) : (
-              <span className="opacity-90">{bucket}</span>
-            )}
-            <span className="opacity-50">/</span>
-            <div className="flex items-center gap-1 flex-wrap">
-              {crumbs.map((c, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  {i < crumbs.length - 1 ? (
-                    <button className="hover:underline cursor-pointer link-accent" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
-                  ) : (
-                    <span className="opacity-90">{c.label}</span>
-                  )}
-                  {i < crumbs.length - 1 && <span className="opacity-50">/</span>}
+              <div className="flex items-center gap-1 flex-wrap" onDoubleClick={() => { setPathInput(currentUri || ''); setEditingPath(true) }} title="Double-click to edit path"
+                   onPaste={(e) => { try { const t = (e as any).clipboardData?.getData('text') || ''; if (t && /^(s3:\/\/)?[^\s]+/i.test(t.trim())) { e.preventDefault(); void tryNavigateTo(t.trim()) } } catch {} }}>
+                <span className="opacity-70">s3://</span>
+                {prefix ? (
+                  <button
+                    className="hover:underline cursor-pointer link-accent"
+                    onClick={() => { trace('ui', 'breadcrumb bucket'); setPrefix('') }}
+                    title={`Go to s3://${bucket}/`}
+                  >
+                    {bucket}
+                  </button>
+                ) : (
+                  <span className="opacity-90">{bucket}</span>
+                )}
+                <span className="opacity-50">/</span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {crumbs.map((c, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      {i < crumbs.length - 1 ? (
+                        <button className="hover:underline cursor-pointer link-accent" onClick={() => { trace('ui', 'breadcrumb click', { value: c.value }); setPrefix(c.value) }}>{c.label}</button>
+                      ) : (
+                        <span className="opacity-90">{c.label}</span>
+                      )}
+                      {i < crumbs.length - 1 && <span className="opacity-50">/</span>}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <button
+                  className="ml-2 text-xs px-2 py-1 rounded row-hover cursor-pointer"
+                  title="Edit path (s3://bucket/prefix)"
+                  onClick={() => { setPathInput(currentUri || ''); setEditingPath(true) }}
+                >
+                  Edit
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <div className="opacity-70">No bucket selected</div>
