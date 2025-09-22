@@ -2,6 +2,23 @@
 
 Cross-platform desktop application (Windows + macOS) for browsing S3 buckets and objects.
 
+## Install
+
+- Download the latest installers from GitHub Releases:
+	- Windows (NSIS .exe / MSI .msi): https://github.com/cornibe/s3lite-browser/releases/latest
+	- macOS (coming soon)
+
+### Quick start
+
+1) Install the app using the downloaded installer.
+2) Launch S3Browser.
+3) Open Settings to pick or configure your AWS credentials (profile/Sso).
+4) Select a profile, choose a bucket, and start browsing.
+
+Tips
+- You can paste an S3 path (e.g., s3://my-bucket/path) into the header to jump there. The app validates access and reverts if invalid.
+- Logs are accessible from View → Open Logs Folder (see Logs section below).
+
 ## Current Layout
 
 ## Keyboard
