@@ -24,6 +24,9 @@ export async function init(params: S3InitParams) {
   currentProfile = params.profile
   process.env.AWS_SDK_LOAD_CONFIG = '1'
   if (currentProfile) process.env.AWS_PROFILE = currentProfile
+  // Respect in-app override of credentials/config paths so the SDK loads from them
+  if (overrideCredsPath) process.env.AWS_SHARED_CREDENTIALS_FILE = overrideCredsPath
+  if (overrideConfigPath) process.env.AWS_CONFIG_FILE = overrideConfigPath
   // Clear any previous client so calls after a failed init don't use a stale client
   client = null
   const region = await resolveRegion(currentProfile)
@@ -146,21 +149,33 @@ async function resolveRegion(profile?: string): Promise<string | undefined> {
   const configRaw = await readFileSafe(configPath)
   const creds = credsRaw ? parseIni(credsRaw) : {}
   const cfg = configRaw ? parseIni(configRaw) : {}
-  const namesToTry = new Set<string>()
-  if (profile) {
-    namesToTry.add(`profile ${profile}`)
-    namesToTry.add(profile)
-  }
   // environment vars can also provide region
   const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
-  const fromCfg = firstDefined(
-    [...namesToTry].map(n => cfg[n]?.['region'])
-  )
-  const fromCreds = firstDefined(
-    [...namesToTry].map(n => creds[n]?.['region'] || creds[n]?.['aws_region'] || creds[n]?.['aws_default_region'])
-  )
-  const resolved = fromCfg || fromCreds || envRegion
-  getLogger().debug('fs', 'resolveRegion', { profile: profile || null, resolved: resolved || null, fromCfg: !!fromCfg, fromCreds: !!fromCreds, env: !!envRegion, credsPath, configPath })
+
+  function regionFor(p?: string): string | undefined {
+    if (!p) return undefined
+    const cfgName = `profile ${p}`
+    const direct = cfg[cfgName]?.['region'] || cfg[p]?.['region'] || creds[p]?.['region'] || creds[p]?.['aws_region'] || creds[p]?.['aws_default_region']
+    if (direct) return direct
+    // Follow source_profile chain if present (assume-role)
+    let current: string | undefined = p
+    const seen = new Set<string>()
+    for (let i = 0; i < 5; i++) {
+      if (!current || seen.has(current)) break
+      seen.add(current)
+      const name = `profile ${current}`
+      const sp = cfg[name]?.['source_profile'] || cfg[current]?.['source_profile']
+      if (!sp) break
+      const r = cfg[`profile ${sp}`]?.['region'] || cfg[sp]?.['region'] || creds[sp]?.['region'] || creds[sp]?.['aws_region'] || creds[sp]?.['aws_default_region']
+      if (r) return r
+      current = sp
+    }
+    return undefined
+  }
+
+  // Try the requested profile, then default
+  const resolved = regionFor(profile) || regionFor('default') || envRegion
+  getLogger().debug('fs', 'resolveRegion', { profile: profile || null, resolved: resolved || null, env: !!envRegion, credsPath, configPath })
   return resolved
 }
 
