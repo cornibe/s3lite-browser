@@ -30,11 +30,14 @@ type SettingsState = {
   partSizeMiB?: number
   multipartThresholdMiB?: number
   darkMode?: boolean
+  compactMode?: boolean
   mounts?: Array<{ bucket: string; prefix?: string }>
-  bottomPanelTab?: 'properties' | 'transfers'
+  bottomPanelTab?: 'properties' | 'transfers' | 'log'
   sidebarWidthPx?: number
   queueHeightPx?: number
   folderScanAutoPages?: number
+  // UI prefs
+  sidebarProfileCollapsed?: boolean
 }
 
 export type AwsLogEntry = {
@@ -128,15 +131,17 @@ function loadSettings(): SettingsState {
         partSizeMiB: parsed.partSizeMiB,
         multipartThresholdMiB: parsed.multipartThresholdMiB,
         darkMode: Boolean(parsed.darkMode),
+    compactMode: Boolean(parsed.compactMode),
         mounts: Array.isArray(parsed.mounts) ? parsed.mounts.filter((m: any) => m && typeof m.bucket === 'string').map((m: any) => ({ bucket: m.bucket, prefix: m.prefix || undefined })) : [],
-        bottomPanelTab: parsed.bottomPanelTab === 'properties' ? 'properties' : 'transfers',
+  bottomPanelTab: parsed.bottomPanelTab === 'properties' || parsed.bottomPanelTab === 'log' ? parsed.bottomPanelTab : 'transfers',
         sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
         queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
         folderScanAutoPages: typeof parsed.folderScanAutoPages === 'number' && parsed.folderScanAutoPages > 0 ? parsed.folderScanAutoPages : 10,
+    sidebarProfileCollapsed: Boolean(parsed.sidebarProfileCollapsed),
       }
     }
   } catch {}
-  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers', mounts: [], folderScanAutoPages: 10 }
+  return { overwritePolicy: 'prompt', darkMode: true, compactMode: false, bottomPanelTab: 'transfers', mounts: [], folderScanAutoPages: 10, sidebarProfileCollapsed: false }
 }
 
 function persistSettings(s: SettingsState) {

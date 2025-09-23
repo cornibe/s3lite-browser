@@ -82,6 +82,11 @@ export default function SettingsModal() {
             <label htmlFor="darkMode" className="text-sm">Dark mode</label>
           </div>
 
+          <div className="flex items-center gap-2">
+            <input id="compactMode" type="checkbox" className="h-4 w-4" checked={Boolean(local.compactMode)} onChange={e => setLocal(s => ({ ...s, compactMode: e.target.checked }))} />
+            <label htmlFor="compactMode" className="text-sm">Compact mode</label>
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-1">Bandwidth limit (KB/s)</label>
             <input className="w-full px-2 py-1 rounded border text-sm input-theme" type="number" min={0}

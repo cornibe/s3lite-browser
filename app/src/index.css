@@ -82,6 +82,8 @@
   .selected-row { background-color: var(--color-selected); color: #ffffff; }
   .selected-row:hover { background-color: var(--color-selected); color: #ffffff; }
   .link-accent { color: var(--color-accent); }
+  /* Dark mode: VS Code link blue for S3 links */
+  html.dark .link-accent, :root:where([data-theme="dark"]) .link-accent { color: #9CDCFE; }
   .overlay-bg { background-color: var(--color-overlay); }
   .menu-bg { background-color: var(--color-menu); }
 
@@ -102,9 +104,11 @@
   .table-zebra tbody tr:nth-child(even):not(.selected-row) { background-color: var(--color-hover); }
 
   /* Tabs: light and dark aware, with visible borders in dark mode */
-  .tab-btn { padding: 0.25rem 0.5rem; font-size: 0.875rem; line-height: 1.25rem; border-radius: 0.375rem; border: 1px solid var(--color-border); background-color: transparent; color: var(--color-fg); }
+  .tab-btn { padding: 0.25rem 0.5rem; font-size: 0.875rem; line-height: 1.25rem; border-radius: 0.375rem; border: 1px solid transparent; background-color: transparent; color: var(--color-fg); transition: background-color 120ms ease, box-shadow 120ms ease; }
   .tab-btn:hover { background-color: var(--color-hover); }
-  .tab-btn.tab-btn-active { background-color: var(--color-hover); }
+  .tab-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+  /* Active tab emphasizes a bottom bar only (no full border) */
+  .tab-btn.tab-btn-active { background-color: transparent; border-color: transparent; box-shadow: inset 0 -2px 0 0 var(--color-accent); border-radius: 0; }
 
   /* Alerts */
   .alert { padding: 0.5rem; border-radius: 0.375rem; font-size: 0.875rem; border: 1px solid transparent; }
@@ -112,4 +116,31 @@
   .alert-warn { background-color: var(--color-warn-bg); color: var(--color-warn-text); border-color: var(--color-warn-border); }
   .alert-info { background-color: var(--color-info-bg); color: var(--color-info-text); border-color: var(--color-info-border); }
   .alert-success { background-color: var(--color-success-bg); color: var(--color-success-text); border-color: var(--color-success-border); }
+}
+
+/* Compact mode overrides */
+@layer utilities {
+  /* Reduce base font size slightly in compact mode */
+  .compact { font-size: 0.95rem; }
+  .compact .text-sm { font-size: 0.8125rem; }
+  .compact .text-xs { font-size: 0.6875rem; }
+
+  /* Dense buttons */
+  .compact .btn { padding: 0.25rem 0.5rem; font-size: 0.8125rem; line-height: 1.125rem; }
+  .compact .btn.text-xs { font-size: 0.6875rem; }
+
+  /* Table density */
+  .compact table { font-size: 0.875rem; }
+  .compact th, .compact td { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .compact th { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .compact td { padding-left: 0.5rem; padding-right: 0.5rem; }
+
+  /* Lists/buttons used as rows */
+  .compact .list-row, .compact .row-btn, .compact .menu-item, .compact .tab-btn { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .compact .tab-btn { padding-left: 0.375rem; padding-right: 0.375rem; font-size: 0.8125rem; }
+
+  /* Inputs */
+  .compact input, .compact select { height: 1.75rem; padding-top: 0.25rem; padding-bottom: 0.25rem; padding-left: 0.5rem; padding-right: 0.5rem; font-size: 0.875rem; }
+  /* Toolbars */
+  .compact .toolbar { padding-top: 0.25rem; padding-bottom: 0.25rem; }
 }

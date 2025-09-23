@@ -146,6 +146,11 @@ export default function ObjectExplorer() {
   const [selectedSet, setSelectedSet] = useState(new Set() as any)
   const [anchorIndex, setAnchorIndex] = useState(null as any)
   const [focusedIndex, setFocusedIndex] = useState(null as any)
+  // Type-to-select buffer
+  const typeBufferRef = useRef({ text: '', ts: 0 })
+  const TYPE_AHEAD_TIMEOUT_MS = 800
+  // Row refs for scroll-into-view
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>())
 
   // Ensure UI has a chance to paint before continuing heavy work
   const yieldToPaint = async () => {
@@ -352,8 +357,77 @@ export default function ObjectExplorer() {
   }
 
   function onKeyDown(e: any) {
+    // Ignore when typing in inputs/selects/textareas or contentEditable
+    const tag = (e.target as HTMLElement)?.tagName
+    const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable
+    if (isInput) return
     if (!visibleItems.length) return
     const currentIdx = focusedIndex ?? visibleItems.findIndex(it => it.type === 'object' ? it.data.key === selectedKey : it.data.prefix === selectedKey)
+
+    // Type-to-select: build a prefix buffer and jump to first matching row
+    const isPrintable = typeof e.key === 'string' && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey
+    if (isPrintable) {
+      const now = Date.now()
+      const lower = e.key.toLowerCase()
+      if (now - typeBufferRef.current.ts > TYPE_AHEAD_TIMEOUT_MS) {
+        typeBufferRef.current.text = lower
+      } else {
+        typeBufferRef.current.text += lower
+      }
+      typeBufferRef.current.ts = now
+
+      const q = typeBufferRef.current.text
+      // Prefer objects; fall back to folders if no object matches
+      const findByPrefix = (preferObjects = true) => {
+        if (preferObjects) {
+          const oi = visibleItems.findIndex(it => it.type === 'object' && getName(it).toLowerCase().startsWith(q))
+          if (oi >= 0) return oi
+        }
+        return visibleItems.findIndex(it => getName(it).toLowerCase().startsWith(q))
+      }
+      const idx = findByPrefix(true)
+      if (idx >= 0) {
+        const it = visibleItems[idx]
+        const rowKey = keyOf(it)
+        setSelectedSet(new Set([rowKey]))
+        setAnchorIndex(idx)
+        setFocusedIndex(idx)
+        setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
+        setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
+        // Scroll selected row into view
+        try { rowRefs.current.get(rowKey)?.scrollIntoView({ block: 'nearest' }) } catch {}
+      }
+      e.preventDefault()
+      return
+    }
+
+    if (e.key === 'Backspace') {
+      const now = Date.now()
+      if (now - typeBufferRef.current.ts <= TYPE_AHEAD_TIMEOUT_MS && typeBufferRef.current.text) {
+        typeBufferRef.current.text = typeBufferRef.current.text.slice(0, -1)
+        typeBufferRef.current.ts = now
+        const q = typeBufferRef.current.text
+        if (q) {
+          const idx = visibleItems.findIndex(it => getName(it).toLowerCase().startsWith(q))
+          if (idx >= 0) {
+            const it = visibleItems[idx]
+            const rowKey = keyOf(it)
+            setSelectedSet(new Set([rowKey]))
+            setAnchorIndex(idx)
+            setFocusedIndex(idx)
+            setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
+            setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
+            try { rowRefs.current.get(rowKey)?.scrollIntoView({ block: 'nearest' }) } catch {}
+          }
+        }
+        e.preventDefault()
+        return
+      } else {
+        typeBufferRef.current.text = ''
+      }
+    } else if (e.key === 'Escape') {
+      typeBufferRef.current.text = ''
+    }
     if (e.key === 'ArrowDown') {
       const next = Math.min((currentIdx < 0 ? 0 : currentIdx + 1), visibleItems.length - 1)
       const it = visibleItems[next]
@@ -888,7 +962,7 @@ export default function ObjectExplorer() {
 
   return (
     <div className="flex-1 flex flex-col bg-panel h-full" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
-  <div className="border-b border-default px-3 py-2 flex items-center gap-2 text-sm bg-header text-app">
+  <div className="border-b border-default px-3 py-2 toolbar flex items-center gap-2 text-sm bg-header text-app">
         {bucket ? (
           <>
             <div className="relative">
@@ -933,6 +1007,7 @@ export default function ObjectExplorer() {
                   if (e.key === 'Enter') { e.preventDefault(); void tryNavigateTo(pathInput) }
                   else if (e.key === 'Escape') { setEditingPath(false); setPathInput(currentUri || '') }
                 }}
+                onBlur={() => { setEditingPath(false); setPathInput(currentUri || '') }}
                 onFocus={(e) => { e.currentTarget.select() }}
                 className="input-theme h-7 w-[32rem] max-w-[60vw] px-2 rounded"
                 placeholder="s3://bucket/path"
@@ -1118,7 +1193,7 @@ export default function ObjectExplorer() {
                 const isSel = selectedSet.has(rowKey)
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
-  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={(e) => {
+  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} ref={(el) => { if (el) rowRefs.current.set(rowKey, el); else rowRefs.current.delete(rowKey) }} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={(e) => {
                       const key = rowKey
                       const isMeta = (e as any).metaKey
                       if (e.shiftKey) {
@@ -1192,7 +1267,7 @@ export default function ObjectExplorer() {
   {/* Details moved to bottom panel */}
 
       {/* Action bar moved to bottom of object panel */}
-      <div className="border-t border-default px-3 py-2 flex items-center gap-2 bg-header text-app">
+  <div className="border-t border-default px-3 py-2 toolbar flex items-center gap-2 bg-header text-app">
         {bucket && (
           <>
             <button
@@ -1256,10 +1331,10 @@ export default function ObjectExplorer() {
        style={{ left: contextMenu.x, top: contextMenu.y }}
        ref={ctxMenuRef}
      >
-          <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
-          <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+          <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
+          <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
           <div className="border-t border-default"></div>
-          <button className="block w-full text-left px-3 py-2 text-red-600 row-hover cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
+          <button className="block w-full text-left px-3 py-2 text-red-600 row-hover menu-item cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
             Delete
           </button>
         </div>

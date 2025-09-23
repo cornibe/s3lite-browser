@@ -6,7 +6,16 @@ type SectionMap = Record<string, Record<string, string>>
 
 type ProfileType = 'standard' | 'temp' | 'assume-role'
 const ALLOWED_CRED_KEYS: Array<'aws_access_key_id'|'aws_secret_access_key'|'aws_session_token'> = ['aws_access_key_id','aws_secret_access_key','aws_session_token']
-const ALLOWED_CONFIG_KEYS: Array<'region'|'role_arn'|'source_profile'|'credential_source'> = ['region','role_arn','source_profile','credential_source']
+const ALLOWED_CONFIG_KEYS: Array<'region'|'role_arn'|'source_profile'|'credential_source'|'role_session_name'|'external_id'|'duration_seconds'|'mfa_serial'> = [
+  'region',
+  'role_arn',
+  'source_profile',
+  'credential_source',
+  'role_session_name',
+  'external_id',
+  'duration_seconds',
+  'mfa_serial'
+]
 
 function parseIni(text: string): SectionMap {
   const sections: SectionMap = {}
@@ -522,7 +531,11 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
     aws_session_token: initial.aws_session_token || '',
     role_arn: initial.role_arn || '',
     source_profile: initial.source_profile || '',
-    credential_source: initial.credential_source || ''
+  credential_source: initial.credential_source || '',
+  role_session_name: (initial as any).role_session_name || '',
+  external_id: (initial as any).external_id || '',
+  duration_seconds: (initial as any).duration_seconds || '',
+  mfa_serial: (initial as any).mfa_serial || ''
   }))
   const [busy, setBusy] = useState(false)
 
@@ -541,6 +554,10 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
       out.role_arn = vals.role_arn || ''
       out.credential_source = vals.credential_source || ''
       out.source_profile = vals.source_profile || ''
+  if (vals.role_session_name) out.role_session_name = vals.role_session_name
+  if (vals.external_id) out.external_id = vals.external_id
+  if (vals.duration_seconds) out.duration_seconds = vals.duration_seconds
+  if (vals.mfa_serial) out.mfa_serial = vals.mfa_serial
     }
     await onSave(out)
   }
@@ -570,6 +587,10 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
             <>
               <Field k="role_arn" label="role_arn" placeholder="arn:aws:iam::123456789012:role/RoleName" vals={vals} setVals={setVals} />
               <Field k="credential_source" label="credential_source" placeholder="Env or Ec2InstanceMetadata" vals={vals} setVals={setVals} />
+              <Field k="role_session_name" label="role_session_name" placeholder="Optional session name" vals={vals} setVals={setVals} />
+              <Field k="external_id" label="external_id" placeholder="Optional external id" vals={vals} setVals={setVals} />
+              <Field k="duration_seconds" label="duration_seconds" placeholder="3600" vals={vals} setVals={setVals} />
+              <Field k="mfa_serial" label="mfa_serial" placeholder="arn:aws:iam::123456789012:mfa/User" vals={vals} setVals={setVals} />
               <div>
                 <label className="block text-sm font-medium mb-1">source_profile</label>
                 <select className="w-full px-2 py-1 rounded border text-sm input-theme"
@@ -605,7 +626,11 @@ function CreateProfileModal({ existing, sourceOptions = [], onCancel, onCreate }
     aws_session_token: '',
     role_arn: '',
     source_profile: '',
-    credential_source: ''
+  credential_source: '',
+  role_session_name: '',
+  external_id: '',
+  duration_seconds: '',
+  mfa_serial: ''
   })
   const [err, setErr] = useState(undefined as string | undefined)
   const [busy, setBusy] = useState(false)
@@ -661,6 +686,10 @@ function CreateProfileModal({ existing, sourceOptions = [], onCancel, onCreate }
             <>
               <Field k="role_arn" label="role_arn" placeholder="arn:aws:iam::123456789012:role/RoleName" vals={vals} setVals={setVals} />
               <Field k="credential_source" label="credential_source" placeholder="Env or Ec2InstanceMetadata" vals={vals} setVals={setVals} />
+              <Field k="role_session_name" label="role_session_name" placeholder="Optional session name" vals={vals} setVals={setVals} />
+              <Field k="external_id" label="external_id" placeholder="Optional external id" vals={vals} setVals={setVals} />
+              <Field k="duration_seconds" label="duration_seconds" placeholder="3600" vals={vals} setVals={setVals} />
+              <Field k="mfa_serial" label="mfa_serial" placeholder="arn:aws:iam::123456789012:mfa/User" vals={vals} setVals={setVals} />
               <div>
                 <label className="block text-sm font-medium mb-1">source_profile</label>
                 <select className="w-full px-2 py-1 rounded border text-sm input-theme"

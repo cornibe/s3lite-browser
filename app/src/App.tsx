@@ -73,8 +73,9 @@ export default function App() {
     })
     return () => { if (typeof off === 'function') off() }
   }, [])
+  const compact = Boolean(settings.compactMode)
   return (
-    <div ref={containerRef} className={dark ? 'dark h-full' : 'h-full'}>
+    <div ref={containerRef} className={`${dark ? 'dark' : ''} ${compact ? 'compact' : ''} h-full`}>
       <div className="h-full flex flex-col overflow-hidden bg-app text-app">
   {/* Tabs above the bucket toolbar */}
   <TabBar />
