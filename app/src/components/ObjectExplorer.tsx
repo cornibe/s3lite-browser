@@ -933,6 +933,7 @@ export default function ObjectExplorer() {
                   if (e.key === 'Enter') { e.preventDefault(); void tryNavigateTo(pathInput) }
                   else if (e.key === 'Escape') { setEditingPath(false); setPathInput(currentUri || '') }
                 }}
+                onBlur={() => { setEditingPath(false); setPathInput(currentUri || '') }}
                 onFocus={(e) => { e.currentTarget.select() }}
                 className="input-theme h-7 w-[32rem] max-w-[60vw] px-2 rounded"
                 placeholder="s3://bucket/path"

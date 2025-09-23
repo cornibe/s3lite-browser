@@ -15,18 +15,21 @@ export default function BottomPanel() {
       <div className="flex items-center gap-2 px-2 py-1 border-b border-default bg-header">
         <button
           className={`tab-btn ${activeTab === 'properties' ? 'tab-btn-active' : ''}`}
+          aria-selected={activeTab === 'properties'}
           onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'properties' })}
         >
           Properties
         </button>
         <button
           className={`tab-btn ${activeTab === 'transfers' ? 'tab-btn-active' : ''}`}
+          aria-selected={activeTab === 'transfers'}
           onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'transfers' })}
         >
           Transfers
         </button>
         <button
           className={`tab-btn ${activeTab === 'log' ? 'tab-btn-active' : ''}`}
+          aria-selected={activeTab === 'log'}
           onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'log' })}
         >
           Log

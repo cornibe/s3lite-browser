@@ -60,14 +60,15 @@ export default function TabBar() {
               >
                 <button
                   onClick={() => activateTab(t.id)}
-                  className={`tab-btn ${active ? 'tab-btn-active' : ''} truncate border-0 bg-transparent`}
+                  className={`tab-btn ${active ? 'tab-btn-active' : ''} truncate`}
+                  aria-selected={active}
                   title={title}
                 >
                   {title}
                 </button>
                 {items.length > 1 && (
                   <button
-                    className={`px-1 py-1 opacity-70 hover:opacity-100`}
+                    className={`px-1 py-1 opacity-70 hover:opacity-100 ${active ? 'ml-0.5' : ''}`}
                     onClick={() => closeTab(t.id)}
                     aria-label="Close tab"
                     title="Close"
