@@ -35,6 +35,8 @@ type SettingsState = {
   sidebarWidthPx?: number
   queueHeightPx?: number
   folderScanAutoPages?: number
+  // UI prefs
+  sidebarProfileCollapsed?: boolean
 }
 
 export type AwsLogEntry = {
@@ -133,10 +135,11 @@ function loadSettings(): SettingsState {
         sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
         queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
         folderScanAutoPages: typeof parsed.folderScanAutoPages === 'number' && parsed.folderScanAutoPages > 0 ? parsed.folderScanAutoPages : 10,
+    sidebarProfileCollapsed: Boolean(parsed.sidebarProfileCollapsed),
       }
     }
   } catch {}
-  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers', mounts: [], folderScanAutoPages: 10 }
+  return { overwritePolicy: 'prompt', darkMode: true, bottomPanelTab: 'transfers', mounts: [], folderScanAutoPages: 10, sidebarProfileCollapsed: false }
 }
 
 function persistSettings(s: SettingsState) {
