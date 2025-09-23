@@ -888,7 +888,7 @@ export default function ObjectExplorer() {
 
   return (
     <div className="flex-1 flex flex-col bg-panel h-full" onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} tabIndex={0} ref={listRef}>
-  <div className="border-b border-default px-3 py-2 flex items-center gap-2 text-sm bg-header text-app">
+  <div className="border-b border-default px-3 py-2 toolbar flex items-center gap-2 text-sm bg-header text-app">
         {bucket ? (
           <>
             <div className="relative">
@@ -1192,7 +1192,7 @@ export default function ObjectExplorer() {
   {/* Details moved to bottom panel */}
 
       {/* Action bar moved to bottom of object panel */}
-      <div className="border-t border-default px-3 py-2 flex items-center gap-2 bg-header text-app">
+  <div className="border-t border-default px-3 py-2 toolbar flex items-center gap-2 bg-header text-app">
         {bucket && (
           <>
             <button
@@ -1256,10 +1256,10 @@ export default function ObjectExplorer() {
        style={{ left: contextMenu.x, top: contextMenu.y }}
        ref={ctxMenuRef}
      >
-          <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
-          <button className="block w-full text-left px-3 py-2 row-hover cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+          <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
+          <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
           <div className="border-t border-default"></div>
-          <button className="block w-full text-left px-3 py-2 text-red-600 row-hover cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
+          <button className="block w-full text-left px-3 py-2 text-red-600 row-hover menu-item cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
             Delete
           </button>
         </div>

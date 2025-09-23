@@ -5,7 +5,7 @@ import TransferQueue from './TransferQueue'
 // Simple tabs component to host Properties and Transfers at the bottom
 export default function BottomPanel() {
   const { selectedKey, settings, setSettings } = useStore() as any
-  const activeTab = settings.bottomPanelTab || 'transfers'
+  const activeTab: 'properties'|'transfers'|'log' = (settings.bottomPanelTab as any) || 'transfers'
   useEffect(() => {
     if (selectedKey && activeTab !== 'properties') setSettings({ bottomPanelTab: 'properties' })
   }, [selectedKey])
@@ -27,7 +27,7 @@ export default function BottomPanel() {
         </button>
         <button
           className={`tab-btn ${activeTab === 'log' ? 'tab-btn-active' : ''}`}
-          onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'log' as any })}
+          onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'log' })}
         >
           Log
         </button>
@@ -60,9 +60,9 @@ function TransfersPanel() {
 
 function LogPanel() {
   const { awsLog, clearAwsLog } = useStore() as any
-  const [selected, setSelected] = useState<any | null>(null)
-  const [statusFilter, setStatusFilter] = useState<'all'|'ok'|'error'>('all')
-  const [scopeFilter, setScopeFilter] = useState<'all'|'s3'|'xfer'>('all')
+  const [selected, setSelected] = useState(null as any | null)
+  const [statusFilter, setStatusFilter] = useState('all' as 'all'|'ok'|'error')
+  const [scopeFilter, setScopeFilter] = useState('all' as 'all'|'s3'|'xfer')
   const [text, setText] = useState('')
   const filtered = React.useMemo(() => {
     const t = text.trim().toLowerCase()
@@ -199,15 +199,15 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
 // Folder properties split in multiple tables with scanning controls
 function FolderPropsTables({ prefix }: { prefix: string }) {
   const { bucket, settings } = useStore() as any
-  const [scanToken, setScanToken] = React.useState<string | undefined>(undefined)
+  const [scanToken, setScanToken] = React.useState(undefined as string | undefined)
   const [totalObjects, setTotalObjects] = React.useState(0)
   const [totalBytes, setTotalBytes] = React.useState(0)
   const [totalFiles, setTotalFiles] = React.useState(0)
   const [totalFolders, setTotalFolders] = React.useState(0)
-  const uniqueFoldersRef = React.useRef<Set<string>>(new Set())
+  const uniqueFoldersRef = React.useRef(new Set<string>())
   const [isScanning, setIsScanning] = React.useState(false)
   const [isAborted, setIsAborted] = React.useState(false)
-  const [error, setError] = React.useState<string | undefined>(undefined)
+  const [error, setError] = React.useState(undefined as string | undefined)
   const [pagesScanned, setPagesScanned] = React.useState(0)
   const [autoStopped, setAutoStopped] = React.useState(false)
   const abortRef = React.useRef(false)

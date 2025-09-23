@@ -408,7 +408,7 @@ export default function SidebarBuckets() {
         role="option"
         aria-selected={isActive}
         onClick={() => { trace('ui', 'select bucket', { bucket: name }); selectBucket(name); setNavSelection({ type: 'bucket', id: name }) }}
-          className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row font-medium' : ''}`}
+          className={`w-full text-left px-3 py-2 row-btn ${hover} ${isActive ? 'selected-row font-medium' : ''}`}
                   >
                     <span className="inline-flex items-center gap-2">
                       <BucketIcon className="w-4 h-4 opacity-80" />
@@ -465,7 +465,7 @@ export default function SidebarBuckets() {
                     role="option"
                     aria-selected={isActive}
                     onClick={() => { selectBucket(m.bucket); setPrefix(m.prefix ?? ''); setNavSelection({ type: 'mount', id }); }}
-                    className={`w-full text-left px-3 py-2 ${hover} ${isActive ? 'selected-row' : ''}`}
+                    className={`w-full text-left px-3 py-2 row-btn ${hover} ${isActive ? 'selected-row' : ''}`}
                     title={`s3://${label}`}
                   >
                     <span className="inline-flex items-center gap-2">
@@ -486,7 +486,7 @@ export default function SidebarBuckets() {
               ref={mountMenuRef}
             >
               <button
-                className="block w-full text-left px-3 py-2 row-hover"
+                className="block w-full text-left px-3 py-2 row-hover menu-item"
                 onClick={() => {
                   const m = settings.mounts[mountMenu.idx]
                   setEditMount({ idx: mountMenu.idx, bucket: m.bucket, prefix: m.prefix })
@@ -496,7 +496,7 @@ export default function SidebarBuckets() {
                 Edit
               </button>
               <button
-                className="block w-full text-left px-3 py-2 text-red-600 row-hover"
+                className="block w-full text-left px-3 py-2 text-red-600 row-hover menu-item"
                 onClick={() => {
                   const next = settings.mounts.filter((_: any, i: number) => i !== mountMenu.idx)
                   setSettings({ mounts: next })

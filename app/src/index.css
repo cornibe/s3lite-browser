@@ -113,3 +113,30 @@
   .alert-info { background-color: var(--color-info-bg); color: var(--color-info-text); border-color: var(--color-info-border); }
   .alert-success { background-color: var(--color-success-bg); color: var(--color-success-text); border-color: var(--color-success-border); }
 }
+
+/* Compact mode overrides */
+@layer utilities {
+  /* Reduce base font size slightly in compact mode */
+  .compact { font-size: 0.95rem; }
+  .compact .text-sm { font-size: 0.8125rem; }
+  .compact .text-xs { font-size: 0.6875rem; }
+
+  /* Dense buttons */
+  .compact .btn { padding: 0.25rem 0.5rem; font-size: 0.8125rem; line-height: 1.125rem; }
+  .compact .btn.text-xs { font-size: 0.6875rem; }
+
+  /* Table density */
+  .compact table { font-size: 0.875rem; }
+  .compact th, .compact td { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .compact th { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .compact td { padding-left: 0.5rem; padding-right: 0.5rem; }
+
+  /* Lists/buttons used as rows */
+  .compact .list-row, .compact .row-btn, .compact .menu-item, .compact .tab-btn { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .compact .tab-btn { padding-left: 0.375rem; padding-right: 0.375rem; font-size: 0.8125rem; }
+
+  /* Inputs */
+  .compact input, .compact select { height: 1.75rem; padding-top: 0.25rem; padding-bottom: 0.25rem; padding-left: 0.5rem; padding-right: 0.5rem; font-size: 0.875rem; }
+  /* Toolbars */
+  .compact .toolbar { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+}

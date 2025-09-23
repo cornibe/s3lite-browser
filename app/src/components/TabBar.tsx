@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { useStore } from '../lib/store'
 
 function PlusIcon({ className = 'w-4 h-4' }: { className?: string }) {
@@ -19,7 +19,6 @@ function CloseIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
 
 export default function TabBar() {
   const { tabs, tabOrder, activeTabId, activateTab, newTab, closeTab } = useStore() as any
-  const [hoverId, setHoverId] = useState<string | null>(null)
   const items = useMemo(() => tabOrder.map((id: string) => tabs[id]).filter(Boolean), [tabs, tabOrder])
 
   // Pre-compute how many tabs exist per profile name
@@ -40,43 +39,45 @@ export default function TabBar() {
           // Keep sequence per profile for numbering (1), (2), ...
           const seq = new Map<string, number>()
           return items.map((t: any) => {
-          const active = t.id === activeTabId
-          const profile: string | undefined = t.profile
-          let title: string = 'New tab'
-          if (profile) {
-            const total = profileCounts.get(profile) || 0
-            if (total > 1) {
-              const n = (seq.get(profile) || 0) + 1
-              seq.set(profile, n)
-              title = `${profile} (${n})`
-            } else {
-              title = profile
+            const active = t.id === activeTabId
+            const profile: string | undefined = t.profile
+            let title: string = t.title || 'New tab'
+            if (profile) {
+              const total = profileCounts.get(profile) || 0
+              if (total > 1) {
+                const n = (seq.get(profile) || 0) + 1
+                seq.set(profile, n)
+                title = `${profile} (${n})`
+              } else {
+                title = profile
+              }
             }
-          }
 
-          return (
-            <div key={t.id} className={`group flex items-center max-w-[22rem] text-sm rounded border border-default ${active ? 'selected-row' : ''}`}
-                 onMouseEnter={() => setHoverId(t.id)} onMouseLeave={() => setHoverId(null)}>
-              <button
-                onClick={() => activateTab(t.id)}
-                className={`px-3 py-1 truncate`}
-                title={title}
+            return (
+              <div
+                key={t.id}
+                className={`group flex items-center max-w-[22rem] text-sm ${active ? '' : ''}`}
               >
-                {title}
-              </button>
-              {items.length > 1 && (
                 <button
-                  className={`px-1 py-1 opacity-70 hover:opacity-100`}
-                  onClick={() => closeTab(t.id)}
-                  aria-label="Close tab"
-                  title="Close"
+                  onClick={() => activateTab(t.id)}
+                  className={`tab-btn ${active ? 'tab-btn-active' : ''} truncate border-0 bg-transparent`}
+                  title={title}
                 >
-                  <CloseIcon />
+                  {title}
                 </button>
-              )}
-            </div>
-          )
-        })
+                {items.length > 1 && (
+                  <button
+                    className={`px-1 py-1 opacity-70 hover:opacity-100`}
+                    onClick={() => closeTab(t.id)}
+                    aria-label="Close tab"
+                    title="Close"
+                  >
+                    <CloseIcon />
+                  </button>
+                )}
+              </div>
+            )
+          })
         })()}
       </div>
       <div className="ml-auto">
