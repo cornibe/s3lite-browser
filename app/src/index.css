@@ -82,6 +82,8 @@
   .selected-row { background-color: var(--color-selected); color: #ffffff; }
   .selected-row:hover { background-color: var(--color-selected); color: #ffffff; }
   .link-accent { color: var(--color-accent); }
+  /* Dark mode: VS Code link blue for S3 links */
+  html.dark .link-accent, :root:where([data-theme="dark"]) .link-accent { color: #9CDCFE; }
   .overlay-bg { background-color: var(--color-overlay); }
   .menu-bg { background-color: var(--color-menu); }
 
