@@ -17,11 +17,7 @@ export default function SidebarBuckets() {
   const [showMountModal, setShowMountModal] = useState(false)
   const [showEditProfiles, setShowEditProfiles] = useState(false)
   const [bucketFilter, setBucketFilter] = useState('')
-  const [profileQuery, setProfileQuery] = useState('')
-  const [isProfileOpen, setIsProfileOpen] = useState(false)
-  const [activeProfileIdx, setActiveProfileIdx] = useState(-1)
-  const profileInputRef = useRef(null as HTMLInputElement | null)
-  const clearOnFocusRef = useRef(false as boolean)
+  // Profile selection now uses a simple native <select>
   const [mountMenu, setMountMenu] = useState(null as { idx: number; x: number; y: number } | null)
   const [editMount, setEditMount] = useState(null as { idx: number; bucket: string; prefix?: string } | null)
   const mountMenuRef = useRef(null as HTMLDivElement | null)
@@ -171,16 +167,7 @@ export default function SidebarBuckets() {
     list.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base', numeric: true }))
     return list
   }, [profiles])
-  const filteredProfiles = useMemo(() => {
-    const q = profileQuery.trim().toLowerCase()
-    if (!q) return sortedProfiles
-    return sortedProfiles.filter(p => String(p.name).toLowerCase().includes(q))
-  }, [sortedProfiles, profileQuery])
 
-  // Keep the input text in sync with selected profile when closed or when profile changes
-  useEffect(() => {
-    if (!isProfileOpen) setProfileQuery(profile ?? '')
-  }, [profile, isProfileOpen])
   return (
     <div className={`h-full overflow-y-auto bg-header text-app`}>
   <div className={`px-3 py-2 border-b border-default space-y-2`}>
@@ -209,112 +196,29 @@ export default function SidebarBuckets() {
         </div>
         {!profileCollapsed && (
           <div className="flex items-center gap-2">
-            {/* Combobox */}
-            <div className="relative flex-1" onKeyDown={(e: any) => {
-              if (!isProfileOpen && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key.length === 1)) {
-                setIsProfileOpen(true)
-                setActiveProfileIdx(0)
-              }
-              if (!isProfileOpen) return
-              if (e.key === 'ArrowDown') { e.preventDefault(); setActiveProfileIdx(i => Math.min((filteredProfiles.length - 1), (i + 1) || 0)) }
-              else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveProfileIdx(i => Math.max(0, (i <= 0 ? 0 : i - 1))) }
-              else if (e.key === 'Enter') {
-                e.preventDefault()
-                const item = filteredProfiles[activeProfileIdx]
-                if (item) {
-                  const next = item.name as string
-                  setProfile(next || undefined)
-                  selectBucket(undefined)
-                  if (next) { void connect(next) }
-                  setIsProfileOpen(false)
-                  setProfileQuery(next)
+            {/* Standard select for profiles */}
+            <select
+              className="input-theme text-sm h-8 px-2 rounded w-full cursor-pointer"
+              value={profile ?? ''}
+              onChange={(e) => {
+                const next = e.target.value || undefined
+                setIsSwitchingProfile(true)
+                setConnected(false)
+                setProfile(next)
+                selectBucket(undefined)
+                if (next) {
+                  void connect(next)
+                } else {
+                  // No profile selected
+                  setIsSwitchingProfile(false)
                 }
-              } else if (e.key === 'Escape') {
-                e.preventDefault(); setIsProfileOpen(false); setProfileQuery(profile ?? '')
-              }
-            }}>
-              <input
-                ref={profileInputRef}
-                type="text"
-                role="combobox"
-                aria-expanded={isProfileOpen}
-                aria-autocomplete="list"
-                aria-controls="profile-listbox"
-                value={profileQuery}
-                onChange={(e) => { setProfileQuery((e.target as HTMLInputElement).value); setIsProfileOpen(true); setActiveProfileIdx(0) }}
-                onMouseDown={() => { clearOnFocusRef.current = true }}
-                onFocus={() => { setIsProfileOpen(true); setActiveProfileIdx(0); if (clearOnFocusRef.current) { setProfileQuery(''); clearOnFocusRef.current = false } }}
-                onBlur={() => { setTimeout(() => setIsProfileOpen(false), 100) }}
-                placeholder={profile ? profile : '(none)'}
-                className={`h-7 px-2 pr-6 rounded border text-sm input-theme w-full`}
-              />
-              <button
-                className="absolute right-1 top-1 h-5 w-5 rounded row-hover flex items-center justify-center"
-                title={isProfileOpen ? 'Close' : 'Open'}
-                aria-label={isProfileOpen ? 'Close profile list' : 'Open profile list'}
-                onMouseDown={(e) => {
-                  // When opening via the arrow, clear the query so the full list shows
-                  // (otherwise it would be filtered to the currently selected profile)
-                  e.preventDefault()
-                  clearOnFocusRef.current = true
-                  profileInputRef.current?.focus()
-                  setIsProfileOpen(o => !o)
-                  // Ensure active index starts at first item when opening
-                  if (!isProfileOpen) setActiveProfileIdx(0)
-                }}
-              >
-                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden>
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
-              </button>
-              {isProfileOpen && (
-                <div className="absolute left-0 right-0 mt-1 menu-bg border border-default rounded shadow-lg max-h-60 overflow-auto z-50">
-                  <ul id="profile-listbox" role="listbox">
-                    {/* None option */}
-                    <li>
-                      <button
-                        role="option"
-                        aria-selected={!profile}
-                        className={`w-full text-left px-2 py-1.5 ${!profile ? 'selected-row' : 'row-hover'}`}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => { setProfile(undefined); selectBucket(undefined); setIsProfileOpen(false); setProfileQuery('') }}
-                      >
-                        (none)
-                      </button>
-                    </li>
-                    {filteredProfiles.length === 0 && (
-                      <li className="px-2 py-1.5 opacity-70 text-sm">No matches</li>
-                    )}
-                    {filteredProfiles.map((p, idx) => {
-                      const isActive = idx === activeProfileIdx
-                      const isSel = profile === p.name
-                      return (
-                        <li key={p.name}
-                          onMouseEnter={() => setActiveProfileIdx(idx)}
-                        >
-                          <button
-                            role="option"
-                            aria-selected={isSel}
-                            className={`w-full text-left px-2 py-1.5 ${isActive ? 'selected-row' : 'row-hover'}`}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              const next = p.name as string
-                              setProfile(next || undefined)
-                              selectBucket(undefined)
-                              if (next) { void connect(next) }
-                              setIsProfileOpen(false)
-                              setProfileQuery(next)
-                            }}
-                          >
-                            {p.name}{p.isSso ? ' (SSO)' : ''}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )}
-            </div>
+              }}
+            >
+              <option value="">(none)</option>
+              {sortedProfiles.map(p => (
+                <option key={p.name} value={p.name}>{p.name}{p.isSso ? ' (SSO)' : ''}</option>
+              ))}
+            </select>
             <button aria-label="Refresh profiles" title="Refresh profiles" className="p-1 rounded row-hover disabled:opacity-50 cursor-pointer" disabled={refreshingProfiles} onClick={() => { void refreshProfiles() }}>
               {refreshingProfiles ? (
                 <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9" strokeWidth="3"/></svg>
