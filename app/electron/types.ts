@@ -202,7 +202,7 @@ export interface RendererAPI {
     startObjectDownload(params: StartObjectDownload): Promise<{ ok: true; jobId: string } | { ok: false; error: string }>
     startPrefixDownload(params: StartPrefixDownload): Promise<{ ok: true; jobId: string } | { ok: false; error: string }>
     startUpload(params: StartUploadParams): Promise<{ ok: true; jobId: string } | { ok: false; error: string }>
-    control(params: any): Promise<any>
+  control(params: any): Promise<any>
     onEvent(cb: (evt: TransferEvent) => void): () => void
   }
 }

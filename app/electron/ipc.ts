@@ -296,7 +296,8 @@ export function registerIpc() {
 
   ipcMain.handle(IpcChannels.XFER_CONTROL, async (e, params) => {
     try {
-      const result = transfers.control(params.jobId, params.action)
+      const win = BrowserWindow.fromWebContents(e.sender)!
+      const result = transfers.control(win, params.jobId, params.action)
       getLogger().debug('xfer', 'control', { jobId: params.jobId, action: params.action })
       return { ok: true as const, result }
     } catch (err) {
