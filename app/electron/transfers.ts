@@ -292,6 +292,7 @@ export async function startPrefix(win: BrowserWindow | null, params: StartPrefix
   let active = 0
   let idx = 0
   const next = async (): Promise<void> => {
+    if ((job as any).status === 'canceled') return
     if (idx >= keys.length) return
     while (active >= settings.objectConcurrency) await new Promise(r => setTimeout(r, 25))
     const k = keys[idx++]
@@ -314,7 +315,7 @@ export async function startPrefix(win: BrowserWindow | null, params: StartPrefix
         it.bytesTransferred = it.size
         job.completedBytes += it.size
       } else {
-        await downloadSingle(win, job, it, settings)
+        if ((job as any).status !== 'canceled') await downloadSingle(win, job, it, settings)
       }
     }
     run().then(() => {
@@ -354,10 +355,12 @@ async function downloadSingle(win: BrowserWindow | null, job: TransferJob, it: T
   if (total >= threshold) await downloadMultipart(win, job, it, settings)
   else await downloadSimple(win, job, it, settings)
 
-  it.status = 'completed'
-  it.completedAt = Date.now()
-  job.completedBytes += it.size
-  emit(win, { type: 'item-state', jobId: job.id, item: it })
+  if ((it as any).status !== 'canceled') {
+    it.status = 'completed'
+    it.completedAt = Date.now()
+    job.completedBytes += it.size
+    emit(win, { type: 'item-state', jobId: job.id, item: it })
+  }
 }
 
 async function downloadSimple(win: BrowserWindow | null, job: TransferJob, it: TransferItem, settings: ReturnType<typeof applyDefaults>) {
@@ -413,6 +416,7 @@ async function downloadMultipart(win: BrowserWindow | null, job: TransferJob, it
     let idx = 0
     const pending = man.parts
     const next = async (): Promise<void> => {
+      if ((job as any).status === 'canceled' || (it as any).status === 'canceled') return
       if (idx >= pending.length) return
       while (active >= settings.partConcurrency) await new Promise(r => setTimeout(r, 10))
       const pIndex = idx++
@@ -466,21 +470,87 @@ async function downloadMultipart(win: BrowserWindow | null, job: TransferJob, it
   try { await fs.promises.unlink(manifest) } catch {}
 }
 
-export function control(jobId: string, action: 'pause'|'resume'|'cancel'|'retry') {
-  // For MVP, only cancel is implemented (sets status; in-progress streams complete quickly). Pausing would need stream abort controllers.
+export function control(win: BrowserWindow | null, jobId: string, action: 'pause'|'resume'|'cancel'|'retry') {
+  // For MVP, implement cancel with UI updates. Pausing would need stream abort controllers.
   const job = jobs.get(jobId)
   if (!job) throw new Error('Unknown job')
-  if (action === 'cancel') job.status = 'canceled'
+  if (action === 'cancel') {
+    job.status = 'canceled'
+    // Mark all active/queued items as canceled and emit updates
+    for (const it of items.values()) {
+      if (it.jobId !== job.id) continue
+      if (it.status === 'completed' || it.status === 'failed' || it.status === 'canceled') continue
+      it.status = 'canceled'
+      emit(win, { type: 'item-state', jobId: job.id, item: it })
+    }
+    emit(win, { type: 'job-state', job })
+  }
 }
 
 export async function startUpload(win: BrowserWindow | null, params: StartUploadParams) {
   const settings = applyDefaults(params.settings)
   const prefix = params.prefix ? params.prefix.replace(/\/+/g, '/').replace(/^\//, '').replace(/\/?$/, '/') : ''
   
+  // Expand any directories into individual files, preserving relative paths under the directory name
+  // This prevents EISDIR errors when a folder is dropped.
+  const expandDroppedFiles = async (files: Array<{ path: string; size: number; name?: string }>) => {
+    const expanded: Array<{ path: string; size: number; name: string }> = []
+    let sawDirectory = false
+    const walkDir = async (rootAbs: string, baseName: string) => {
+      // baseName is the container folder name to prefix to all relative entries
+      const stack: Array<{ abs: string; rel: string }> = [{ abs: rootAbs, rel: '' }]
+      while (stack.length) {
+        const { abs, rel } = stack.pop()!
+        let entries: fs.Dirent[]
+        try { entries = await fs.promises.readdir(abs, { withFileTypes: true }) } catch { continue }
+        for (const de of entries) {
+          const childAbs = path.join(abs, de.name)
+          const childRel = rel ? path.posix.join(rel.replace(/\\/g, '/'), de.name) : de.name
+          if (de.isDirectory()) {
+            stack.push({ abs: childAbs, rel: childRel })
+          } else if (de.isFile()) {
+            let st: fs.Stats | undefined
+            try { st = await fs.promises.stat(childAbs) } catch {}
+            const size = st?.size ?? 0
+            const name = path.posix.join(baseName, childRel)
+            expanded.push({ path: childAbs, size, name })
+          }
+        }
+      }
+    }
+    for (const f of files) {
+      const abs = f.path
+      const displayName = f.name || (abs ? path.basename(abs) : 'file')
+      if (!abs) {
+        // If path is missing we can't upload; skip it
+        continue
+      }
+      let st: fs.Stats | undefined
+      try { st = await fs.promises.stat(abs) } catch {}
+      if (st?.isDirectory()) {
+        sawDirectory = true
+        await walkDir(abs, displayName)
+      } else if (st?.isFile()) {
+        const size = st.size
+        expanded.push({ path: abs, size, name: displayName })
+      } else {
+        // Not a regular file (symlink, device, etc) -> skip
+      }
+    }
+    return { files: expanded, hadDirectory: sawDirectory }
+  }
+  
+  const { files: expandedFiles, hadDirectory } = await expandDroppedFiles(params.files)
+  if (expandedFiles.length === 0) {
+    throw new Error('No files to upload (empty folder or invalid items).')
+  }
+  
   // For multiple files without a prefix, create individual object jobs instead of a single prefix job
-  if (params.files.length > 1 && !prefix) {
+  // But if the multiple files came from a dropped folder (names contain '/'),
+  // keep them in a single job so the folder structure is preserved.
+  if (expandedFiles.length > 1 && !prefix && !hadDirectory && expandedFiles.every(f => !f.name.includes('/'))) {
     const jobIds: string[] = []
-    for (const file of params.files) {
+    for (const file of expandedFiles) {
       const jobId = newId('job')
       getLogger().debug('xfer', 'startUpload individual', { jobId, bucket: params.bucket, file: file.name })
       const job: TransferJob = {
@@ -490,7 +560,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
         prefix: '',
         destDir: '',
         status: 'queued',
-        totalBytes: file.size,
+        totalBytes: file.size || 0,
         completedBytes: 0,
         itemCount: 1,
         completedCount: 0,
@@ -505,7 +575,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
         jobId, 
         bucket: params.bucket, 
         key, 
-        size: file.size, 
+        size: file.size || 0, 
         destPath: file.path, 
         status: 'queued', 
         bytesTransferred: 0 
@@ -514,7 +584,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
       emit(win, { type: 'item-state', jobId, item: it })
       
       // Start upload for this individual file
-      uploadOne(win, job, it, file.path, file.size, settings).then(() => {
+      uploadOne(win, job, it, file.path, it.size, settings).then(() => {
         job.completedCount = 1
         job.status = 'completed'
         emit(win, { type: 'job-state', job })
@@ -534,10 +604,10 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
   
   // Original logic for single files or files with a prefix
   const jobId = newId('job')
-  getLogger().debug('xfer', 'startUpload', { jobId, bucket: params.bucket, prefix, files: params.files.length })
+  getLogger().debug('xfer', 'startUpload', { jobId, bucket: params.bucket, prefix, files: expandedFiles.length })
   
   // Use 'object' type for single file uploads, 'prefix' for multiple files with prefix
-  const jobType = (params.files.length === 1) ? 'object' : 'prefix'
+  const jobType = (expandedFiles.length === 1) ? 'object' : 'prefix'
   
   const job: TransferJob = {
     id: jobId,
@@ -546,9 +616,9 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
     prefix,
     destDir: '',
     status: 'queued',
-    totalBytes: params.files.reduce((a, f) => a + (f.size || 0), 0),
+    totalBytes: expandedFiles.reduce((a, f) => a + (f.size || 0), 0),
     completedBytes: 0,
-    itemCount: params.files.length,
+    itemCount: expandedFiles.length,
     completedCount: 0,
     settings
   } as any
@@ -558,16 +628,17 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
   let active = 0
   let idx = 0
   const next = async (): Promise<void> => {
-    if (idx >= params.files.length) return
+    if ((job as any).status === 'canceled') return
+    if (idx >= expandedFiles.length) return
     while (active >= settings.objectConcurrency) await new Promise(r => setTimeout(r, 20))
-    const f = params.files[idx++]
+    const f = expandedFiles[idx++]
     active++
     getLogger().trace('xfer', 'upload next', { jobId, path: f.path, size: f.size })
     const key = prefix + (f.name || path.basename(f.path))
-    const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key, size: f.size, destPath: f.path, status: 'queued', bytesTransferred: 0 }
+    const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key, size: f.size || 0, destPath: f.path, status: 'queued', bytesTransferred: 0 }
     items.set(it.id, it)
     emit(win, { type: 'item-state', jobId, item: it })
-    uploadOne(win, job, it, f.path, f.size, settings).then(() => {
+    uploadOne(win, job, it, f.path, it.size, settings).then(() => {
       active--
       job.completedCount++
       if (job.completedCount >= job.itemCount && job.status !== 'failed' && job.status !== 'canceled') {
@@ -587,7 +658,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
       void next()
     })
   }
-  const kicks = Math.min(settings.objectConcurrency, params.files.length)
+  const kicks = Math.min(settings.objectConcurrency, expandedFiles.length)
   for (let i = 0; i < kicks; i++) void next()
   return jobId
 }
@@ -611,12 +682,14 @@ async function uploadOne(win: BrowserWindow | null, job: TransferJob, it: Transf
   if (size >= threshold) await uploadMultipart(win, job, it, filePath, settings)
   else await uploadSimple(win, job, it, filePath)
 
-  it.status = 'completed'
-  it.completedAt = Date.now()
-  it.bytesTransferred = it.size  // Ensure 100% completion
-  recalcJobProgress(job)
-  emit(win, { type: 'item-state', jobId: job.id, item: it })
-  emit(win, { type: 'job-state', job })
+  if ((it as any).status !== 'canceled') {
+    it.status = 'completed'
+    it.completedAt = Date.now()
+    it.bytesTransferred = it.size  // Ensure 100% completion
+    recalcJobProgress(job)
+    emit(win, { type: 'item-state', jobId: job.id, item: it })
+    emit(win, { type: 'job-state', job })
+  }
 }
 
 async function uploadSimple(win: BrowserWindow | null, job: TransferJob, it: TransferItem, filePath: string) {

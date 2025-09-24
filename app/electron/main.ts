@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import path from 'path'
+import fs from 'fs'
 import { registerIpc } from './ipc'
 import { getLogger, initLogger } from './log'
 
@@ -45,12 +46,58 @@ async function setup() {
 
   let verboseConsole = false
   const levels: Array<'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL'> = ['TRACE','DEBUG','INFO','WARN','ERROR','FATAL']
+  // Configure About panel with stack/build/license info
+  try {
+    const pkgPath = path.join(app.getAppPath(), 'package.json')
+    const pkgRaw = fs.readFileSync(pkgPath, 'utf-8')
+    const pkg = JSON.parse(pkgRaw) as any
+    const reactVer = pkg?.dependencies?.react ?? 'unknown'
+    const viteVer = pkg?.devDependencies?.vite ?? 'unknown'
+    const awsVer = pkg?.dependencies?.['@aws-sdk/client-s3'] ?? 'unknown'
+    const website = pkg?.repository?.url?.replace(/^git\+/, '') ?? 'https://github.com/cornibe/s3lite-browser'
+
+    app.setAboutPanelOptions({
+      applicationName: 'S3Browser',
+      applicationVersion: app.getVersion(),
+      authors: [pkg?.author ?? ''],
+      website,
+      // iconPath is optional; .ico works on Windows
+      iconPath: process.platform === 'win32' ? path.join(app.getAppPath(), 'icons', 'icon.ico') : undefined,
+      credits: [
+        'Lightweight S3 bucket/object browser',
+        '',
+        'Stack:',
+        `- Electron: ${process.versions.electron}`,
+        `- Chromium: ${process.versions.chrome}`,
+        `- Node.js: ${process.versions.node}`,
+        `- React: ${reactVer}`,
+        `- Vite: ${viteVer}`,
+        `- AWS SDK v3: ${awsVer}`,
+        '',
+        'Build:',
+        `- Version: ${app.getVersion()}`,
+        `- Mode: ${isDev ? 'development' : 'production'}`,
+        '',
+        'License: MIT (see LICENSE)'
+      ].join('\n')
+    })
+  } catch (err) {
+    getLogger().warn('about', 'failed to set about panel options', { message: (err as Error)?.message })
+  }
+
   const template = [
     ...(process.platform === 'darwin' ? [{
       label: app.getName(),
       submenu: [
         { role: 'about' as const },
         { type: 'separator' as const },
+        { role: 'quit' as const }
+      ]
+    }] : []),
+    // File menu (Win/Linux): add Quit
+    ...(process.platform !== 'darwin' ? [{
+      label: 'File',
+      submenu: [
         { role: 'quit' as const }
       ]
     }] : []),
@@ -96,7 +143,18 @@ async function setup() {
           ]
         }
       ]
-    }
+    },
+    // Help menu (Win/Linux): About
+    ...(process.platform !== 'darwin' ? [{
+      label: 'Help',
+      role: 'help' as const,
+      submenu: [
+        {
+          label: 'About',
+          click: () => { app.showAboutPanel() }
+        }
+      ]
+    }] : [])
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 

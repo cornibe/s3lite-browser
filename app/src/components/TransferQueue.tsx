@@ -35,7 +35,7 @@ function computePercent(bytes: number, total: number, completed: boolean) {
 }
 
 function useRowSpeed(id: string, rawBps?: number) {
-  const ref = useRef<RowState>({})
+  const ref = useRef({} as RowState)
   const [, setTick] = useState(0)
   useEffect(() => {
     const now = performance.now()
@@ -48,143 +48,99 @@ function useRowSpeed(id: string, rawBps?: number) {
   return ref.current.speed
 }
 
-function ActionButtons({ job, onRemove }: { job: TransferJobType; onRemove: () => void }) {
-  const status = job.status
-  const canPause = status === 'in-progress'
-  const canResume = status === 'paused' || status === 'queued'
-  const canCancel = status === 'in-progress' || status === 'queued' || status === 'paused'
-  const isTerminal = status === 'completed' || status === 'failed' || status === 'canceled'
-  if (isTerminal) {
-    return (
-      <div className="flex justify-end">
-        <button aria-label="Remove job" className="btn btn-secondary text-xs" onClick={onRemove}>Remove</button>
-      </div>
-    )
-  }
-  return (
-    <div className="flex gap-1 justify-end">
-      <button aria-label="Pause job" disabled={!canPause} className="btn btn-secondary text-xs disabled:opacity-50" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'pause' })}>Pause</button>
-      <button aria-label="Resume job" disabled={!canResume} className="btn btn-secondary text-xs disabled:opacity-50" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'resume' })}>Resume</button>
-      <button aria-label="Cancel job" disabled={!canCancel} className="btn btn-secondary text-xs disabled:opacity-50" onClick={() => (window as any).api.transfers.control({ jobId: job.id, action: 'cancel' })}>Cancel</button>
-    </div>
-  )
-}
-
-const TransferItem: React.FC<{ item: TransferItemType; job: TransferJobType }> = ({ item, job }) => {
-  const { transfers, setTransfers } = useStore()
-  const total = item.size || 0
-  const completed = item.status === 'completed'
-  const bytes = completed ? total : Math.min(Math.max(0, item.bytesTransferred || 0), total)
-  const percent = computePercent(bytes, total, completed)
-  const speed = useRowSpeed(item.id, item.status === 'in-progress' ? item.speedBps : undefined)
-  const name = nameFromKey(item.key)
-  const statusText = item.status
-  const isInProgress = item.status === 'in-progress'
-  const verb = job.destDir ? 'Downloading' : 'Uploading'
-
-  function removeItem() {
-    const newItems = { ...transfers.items }
-    delete newItems[item.id]
-    const newJobs = { ...transfers.jobs }
-    if (Object.values(newItems).every(it => it.jobId !== item.jobId)) delete newJobs[item.jobId]
-    setTransfers({ jobs: newJobs, items: newItems })
-  }
-
-  return (
-    <div role="row" aria-live={isInProgress ? 'polite' : undefined} aria-label={isInProgress ? `${verb} ${name}, ${Math.round(percent*100)}%` : name} className="grid grid-cols-[minmax(10rem,1fr)_12rem_14rem_8rem_8rem_10rem] items-center gap-3 py-1">
-      <div role="cell" className="truncate" title={item.key || '(no name)'}>{name}</div>
-      <div role="cell" className="tabular-nums">
-        <div className="flex items-center gap-2">
-          <div className="min-w-10 text-right">{Math.round(percent * 100)}%</div>
-          <div className="flex-1"><ProgressBar percent={percent} /></div>
-        </div>
-      </div>
-      <div role="cell" className="tabular-nums text-right">{formatBytesIEC(bytes)} / {formatBytesIEC(total)}</div>
-      <div role="cell" className="tabular-nums text-right text-xs">{item.status === 'in-progress' && speed && speed > 0 ? `${formatBytesIEC(speed)}/s` : ''}</div>
-      <div role="cell" className="capitalize text-xs text-right">{statusText}</div>
-      {/* Actions column for items intentionally minimal: only Remove on terminal states */}
-      <div role="cell" className="text-right">
-        {(item.status === 'completed' || item.status === 'failed' || item.status === 'canceled') && (
-          <button aria-label="Remove item" className="btn btn-secondary text-xs" onClick={removeItem}>Remove</button>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export default function TransferQueue() {
   const { transfers, setTransfers } = useStore()
 
-  const jobs = useMemo(() => Object.values(transfers.jobs), [transfers.jobs])
-  const allItems = useMemo(() => Object.values(transfers.items), [transfers.items])
+  const jobsById = useMemo(() => transfers.jobs, [transfers.jobs])
+  const items = useMemo(() => Object.values(transfers.items), [transfers.items])
 
-  function clearJob(jobId: string) {
-    const newJobs = { ...transfers.jobs }
-    delete newJobs[jobId]
+  type SortKey = 'name' | 'direction' | 'progress' | 'bytes' | 'size' | 'speed' | 'status' | 'started'
+  const [sortKey, setSortKey] = useState('started' as SortKey)
+  const [sortDir, setSortDir] = useState('desc' as 'asc' | 'desc')
+
+  const rows = useMemo(() => {
+    const statusOrder: Record<string, number> = { 'in-progress': 1, queued: 2, paused: 3, completed: 4, failed: 5, canceled: 6 }
+    const enrich = items.map(it => {
+      const job = jobsById[it.jobId]
+      const total = it.size || 0
+      const completed = it.status === 'completed'
+      const bytes = completed ? total : Math.min(Math.max(0, it.bytesTransferred || 0), total)
+      const percent = computePercent(bytes, total, completed)
+      const name = nameFromKey(it.key)
+      const direction = job?.destDir ? 'Download' : 'Upload'
+      const speed = it.status === 'in-progress' ? (it.speedBps || 0) : 0
+      return { it, job, name, direction, bytes, total, percent, speed, statusIndex: statusOrder[it.status] ?? 999 }
+    })
+    const cmp = (a: any, b: any) => {
+      const mul = sortDir === 'asc' ? 1 : -1
+      switch (sortKey) {
+        case 'name': return mul * a.name.localeCompare(b.name)
+        case 'direction': return mul * a.direction.localeCompare(b.direction)
+        case 'progress': return mul * ((a.percent || 0) - (b.percent || 0))
+        case 'bytes': return mul * ((a.bytes || 0) - (b.bytes || 0))
+        case 'size': return mul * ((a.total || 0) - (b.total || 0))
+        case 'speed': return mul * ((a.speed || 0) - (b.speed || 0))
+        case 'status': return mul * ((a.statusIndex || 0) - (b.statusIndex || 0))
+        case 'started': return mul * ((a.it.startedAt || 0) - (b.it.startedAt || 0))
+      }
+    }
+    return enrich.sort(cmp)
+  }, [items, jobsById, sortKey, sortDir])
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir(key === 'name' ? 'asc' : 'desc') }
+  }
+
+  function removeItem(it: TransferItemType) {
     const newItems = { ...transfers.items }
-    for (const item of Object.values(newItems)) if (item.jobId === jobId) delete newItems[item.id]
+    delete newItems[it.id]
+    const newJobs = { ...transfers.jobs }
+    if (Object.values(newItems).every(x => x.jobId !== it.jobId)) delete newJobs[it.jobId]
     setTransfers({ jobs: newJobs, items: newItems })
   }
 
-  const dark = Boolean(useStore.getState().settings?.darkMode)
+  function clearFinished() {
+    const newJobs: Record<string, TransferJobType> = {}
+    const terminal = new Set<string>()
+    for (const j of Object.values(transfers.jobs)) {
+      const isTerminal = j.status === 'completed' || j.status === 'failed' || j.status === 'canceled'
+      if (!isTerminal) newJobs[j.id] = j
+      else terminal.add(j.id)
+    }
+    const newItems: Record<string, TransferItemType> = {}
+    for (const it of Object.values(transfers.items)) if (newJobs[it.jobId]) newItems[it.id] = it
+    setTransfers({ jobs: newJobs, items: newItems })
+  }
 
-  const activeJobs = jobs.filter(j => j.status === 'in-progress' || j.status === 'queued' || j.status === 'paused')
-  const completedJobs = jobs.filter(j => j.status === 'completed')
-  const failedJobs = jobs.filter(j => j.status === 'failed' || j.status === 'canceled')
-
-  function renderJob(job: TransferJobType) {
-        const jobItems = allItems.filter(it => it.jobId === job.id)
-        const total = job.totalBytes || 0
-        const completed = job.completedBytes || 0
-        const pct = computePercent(completed, total, job.status === 'completed')
-        
-        // Better title generation based on job type and content
-        let title: string
-        if (job.type === 'object' && jobItems.length === 1) {
-          title = nameFromKey(jobItems[0]?.key) || '(no name)'
-        } else if (job.type === 'prefix') {
-          if (job.prefix && job.prefix !== '') {
-            title = job.prefix.replace(/\/$/, '') || '(no name)'
-          } else {
-            // Multiple files without a prefix - show file count
-            title = `${job.itemCount} file${job.itemCount !== 1 ? 's' : ''}`
-          }
-        } else {
-          title = jobItems[0]?.key || '(no name)'
-        }
-        
-        const isTerminal = job.status === 'completed' || job.status === 'failed' || job.status === 'canceled'
-        // For single-object jobs, render just the item row to avoid duplicate appearance
-        if (job.type === 'object' && jobItems.length === 1) {
-          const it = jobItems[0]
-          return (
-            <TransferItem key={it.id} item={it} job={job} />
-          )
-        }
-        return (
-          <div key={job.id} className={`mb-3 rounded ${job.status === 'failed' ? 'alert alert-error' : ''}`}>
-            <div role="row" className="grid grid-cols-[minmax(10rem,1fr)_12rem_14rem_8rem_8rem_10rem] items-center gap-3 py-1">
-              <div role="cell" className="truncate" title={title}>
-                {job.type === 'prefix' && job.prefix && job.prefix !== '' ? `Folder: ${title}` : title}
-              </div>
-              <div role="cell" className="tabular-nums">
-                <div className="flex items-center gap-2">
-                  <div className="min-w-10 text-right">{Math.round(pct * 100)}%</div>
-                  <div className="flex-1"><ProgressBar percent={pct} /></div>
-                </div>
-              </div>
-              <div role="cell" className="tabular-nums text-right">{formatBytesIEC(completed)} / {formatBytesIEC(total)}</div>
-              <div role="cell" className="text-xs text-right opacity-70">{/* speed hidden at job level */}</div>
-              <div role="cell" className="capitalize text-xs text-right">{job.status}</div>
-              <div role="cell"><ActionButtons job={job} onRemove={() => clearJob(job.id)} /></div>
-            </div>
-            <div className="mt-1 divide-y divide-neutral-200 dark:divide-[#323233]/50">
-              {jobItems.map(it => (
-                <TransferItem key={it.id} item={it} job={job} />
-              ))}
-            </div>
+  function Row({ row }: any) {
+    const { it, job, name, percent, bytes, total, speed, direction } = row
+    const rowSpeed = useRowSpeed(it.id, it.status === 'in-progress' ? speed : undefined)
+    const isTerminal = it.status === 'completed' || it.status === 'failed' || it.status === 'canceled'
+    const canCancel = !isTerminal && (job?.status === 'in-progress' || job?.status === 'queued' || job?.status === 'paused')
+    return (
+      <div key={it.id} role="row" className="grid grid-cols-[minmax(12rem,1.5fr)_7rem_12rem_14rem_7rem_8rem_8rem] items-center gap-3 px-2 py-2">
+        <div role="cell" className="truncate" title={it.key}>{name}</div>
+        <div role="cell" className="text-center text-xs opacity-80">{direction}</div>
+        <div role="cell" className="tabular-nums">
+          <div className="flex items-center gap-2">
+            <div className="min-w-10 text-right">{Math.round(percent * 100)}%</div>
+            <div className="flex-1"><ProgressBar percent={percent} /></div>
           </div>
-        )
+        </div>
+        <div role="cell" className="tabular-nums text-right">{formatBytesIEC(bytes)} / {formatBytesIEC(total)}</div>
+        <div role="cell" className="tabular-nums text-right text-xs">{it.status === 'in-progress' && rowSpeed && rowSpeed > 0 ? `${formatBytesIEC(rowSpeed)}/s` : ''}</div>
+        <div role="cell" className="capitalize text-xs text-right">{it.status}</div>
+        <div role="cell" className="text-right">
+          {canCancel && (
+            <button className="btn btn-secondary text-xs mr-1" onClick={() => (window as any).api.transfers.control({ jobId: it.jobId, action: 'cancel' })}>Cancel</button>
+          )}
+          {isTerminal && (
+            <button className="btn btn-secondary text-xs" onClick={() => removeItem(it)}>Remove</button>
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -192,53 +148,27 @@ export default function TransferQueue() {
       <div className="flex items-center mb-2">
         <div className="font-semibold">Transfer Queue</div>
         <div className="ml-auto flex items-center gap-2">
-          <button
-            className="btn btn-secondary text-xs"
-            title="Clear finished (completed/failed/canceled)"
-            onClick={() => {
-              // Remove terminal jobs and their items
-              const newJobs: Record<string, any> = {}
-              for (const j of jobs) {
-                const isTerminal = j.status === 'completed' || j.status === 'failed' || j.status === 'canceled'
-                if (!isTerminal) newJobs[j.id] = j
-              }
-              const newItems: Record<string, any> = {}
-              for (const it of allItems) {
-                const job = newJobs[it.jobId]
-                if (job) newItems[it.id] = it
-              }
-              setTransfers({ jobs: newJobs, items: newItems })
-            }}
-          >
-            Clear finished
-          </button>
+          <button className="btn btn-secondary text-xs" title="Clear finished (completed/failed/canceled)" onClick={clearFinished}>Clear finished</button>
         </div>
       </div>
-      {jobs.length === 0 && <div className="opacity-60">No transfers.</div>}
-
-      {activeJobs.length > 0 && (
-        <div className="mb-3">
-          <div className="font-medium mb-1">Active</div>
-          <div className="rounded border border-default p-2">
-            {activeJobs.map(renderJob)}
-          </div>
-        </div>
-      )}
-
-      {completedJobs.length > 0 && (
-        <div className="mb-3">
-          <div className="font-medium mb-1">Completed</div>
-          <div className="rounded border border-default p-2">
-            {completedJobs.map(renderJob)}
-          </div>
-        </div>
-      )}
-
-      {failedJobs.length > 0 && (
-        <div className="mb-3">
-          <div className="font-medium mb-1">Failed/Cancelled</div>
-          <div className="rounded border border-default p-2">
-            {failedJobs.map(renderJob)}
+      {rows.length === 0 && <div className="opacity-60">No transfers.</div>}
+      {rows.length > 0 && (
+        <div className="rounded border border-default overflow-hidden">
+          <div role="table" className="w-full">
+            <div role="row" className="grid grid-cols-[minmax(12rem,1.5fr)_7rem_12rem_14rem_7rem_8rem_8rem] items-center gap-3 px-2 py-1 bg-neutral-100 dark:bg-[#1e1e1f] border-b border-default">
+              <div role="columnheader" className="font-medium cursor-pointer select-none" onClick={() => toggleSort('name')}>Name {sortKey==='name' ? (sortDir==='asc'?'▲':'▼') : ''}</div>
+              <div role="columnheader" className="font-medium cursor-pointer select-none text-center" onClick={() => toggleSort('direction')}>Dir {sortKey==='direction' ? (sortDir==='asc'?'▲':'▼') : ''}</div>
+              <div role="columnheader" className="font-medium cursor-pointer select-none" onClick={() => toggleSort('progress')}>Progress {sortKey==='progress' ? (sortDir==='asc'?'▲':'▼') : ''}</div>
+              <div role="columnheader" className="font-medium cursor-pointer select-none text-right" onClick={() => toggleSort('bytes')}>Bytes {sortKey==='bytes' ? (sortDir==='asc'?'▲':'▼') : ''}</div>
+              <div role="columnheader" className="font-medium cursor-pointer select-none text-right" onClick={() => toggleSort('speed')}>Speed {sortKey==='speed' ? (sortDir==='asc'?'▲':'▼') : ''}</div>
+              <div role="columnheader" className="font-medium cursor-pointer select-none text-right" onClick={() => toggleSort('status')}>Status {sortKey==='status' ? (sortDir==='asc'?'▲':'▼') : ''}</div>
+              <div role="columnheader" className="font-medium text-right">Actions</div>
+            </div>
+            <div role="rowgroup" className="divide-y divide-neutral-200 dark:divide-[#323233]/50">
+              {rows.map(row => (
+                <Row key={row.it.id} row={row} />
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useStore } from '../lib/store'
 import TransferQueue from './TransferQueue'
 
 // Simple tabs component to host Properties and Transfers at the bottom
 export default function BottomPanel() {
   const { selectedKey, settings, setSettings } = useStore() as any
-  const activeTab: 'properties'|'transfers'|'log' = (settings.bottomPanelTab as any) || 'transfers'
+  const activeTab: 'properties'|'transfers'|'log'|'preview' = (settings.bottomPanelTab as any) || 'transfers'
   useEffect(() => {
     if (selectedKey && activeTab !== 'properties') setSettings({ bottomPanelTab: 'properties' })
   }, [selectedKey])
@@ -34,9 +35,16 @@ export default function BottomPanel() {
         >
           Log
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'preview' ? 'tab-btn-active' : ''}`}
+          aria-selected={activeTab === 'preview'}
+          onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'preview' })}
+        >
+          Preview
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
-        {activeTab === 'properties' ? <PropertiesPanel /> : activeTab === 'transfers' ? <TransfersPanel /> : <LogPanel />}
+        {activeTab === 'properties' ? <PropertiesPanel /> : activeTab === 'transfers' ? <TransfersPanel /> : activeTab === 'log' ? <LogPanel /> : <PreviewPanel />}
       </div>
     </div>
   )
@@ -57,6 +65,43 @@ function TransfersPanel() {
   return (
     <div className="h-full overflow-hidden">
       <TransferQueue />
+    </div>
+  )
+}
+
+// Preview panel: fetches up to 256 KiB on-demand when active
+function PreviewPanel() {
+  const { bucket, selectedKey, selectedType } = useStore() as any
+  const [state, setState] = React.useState({ loading: false } as any)
+  const loadedKeyRef = React.useRef(undefined as any)
+
+  async function load() {
+    if (!bucket || !selectedKey || selectedType !== 'object') return
+    if (loadedKeyRef.current === selectedKey) return
+    setState({ loading: true })
+    try {
+      const res = await (window as any).api.s3.getObjectPreview({ bucket, key: selectedKey, maxBytes: 256 * 1024 })
+      loadedKeyRef.current = selectedKey
+      setState({ loading: false, text: res.text, isBinary: res.isBinary, contentType: res.contentType, truncated: res.truncated })
+    } catch (e) {
+      setState({ loading: false, error: (e as Error)?.message || 'Failed to load preview' })
+    }
+  }
+
+  useEffect(() => { load() }, [bucket, selectedKey, selectedType])
+
+  if (!bucket || !selectedKey) return <div className="px-3 py-2 text-sm opacity-70">Select a file to preview.</div>
+  if (selectedType !== 'object') return <div className="px-3 py-2 text-sm opacity-70">Preview is available for files only.</div>
+  if (state.loading) return <div className="px-3 py-2 text-sm opacity-70">Loading preview…</div>
+  if (state.error) return <div className="px-3 py-2 text-sm text-red-600">{state.error}</div>
+  if (state.isBinary) return <div className="px-3 py-2 text-sm opacity-70">Binary file. Preview not available.</div>
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-2 py-1 border-b border-default bg-header text-xs opacity-80 flex gap-2">
+        <div>Type: {state.contentType || 'unknown'}</div>
+        <div>Size shown: up to 256 KB{state.truncated ? ' (truncated)' : ''}</div>
+      </div>
+      <pre className="flex-1 m-0 p-3 text-xs overflow-auto"><code>{state.text || ''}</code></pre>
     </div>
   )
 }
@@ -172,29 +217,122 @@ function LogPanel() {
 // Object properties split in multiple tables: Details, Metadata (placeholder), Tags (placeholder)
 function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keyStr: string; details?: any }) {
   // For now, we use information encoded in the key; deeper metadata/tags could be queried later.
-  const name = keyStr.split('/').slice(-1)[0]
+  const { showToast } = useStore() as any
+  const s3Uri = bucket ? `s3://${bucket}/${keyStr}` : ''
+  const [copied, setCopied] = React.useState(false)
+  const [tooltipPos, setTooltipPos] = React.useState(null as null | { x: number; y: number })
+  const copyTimer = React.useRef(undefined as any)
+  const keyBtnRef = React.useRef(null as any)
+  const etagBtnRef = React.useRef(null as any)
+  const uriBtnRef = React.useRef(null as any)
+
+  function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
+    return (
+      <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+        <path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/>
+      </svg>
+    )
+  }
   return (
-    <div className="p-3 space-y-4 text-sm">
-      <div>
-        <div className="font-semibold mb-1">Details</div>
-        <div className="rounded border border-default">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 p-3">
-            <div><span className="opacity-70">Key:</span> <span className="font-mono break-all">{keyStr}</span></div>
-            <div><span className="opacity-70">File name:</span> {name}</div>
-            {details && (
-              <>
-                <div><span className="opacity-70">Size:</span> {formatSize(details.size || 0)}</div>
-                <div><span className="opacity-70">Last modified:</span> {details.lastModified ? new Date(details.lastModified).toLocaleString() : '-'}</div>
-                <div><span className="opacity-70">ETag:</span> <span className="font-mono">{details.etag ?? ''}</span></div>
-                <div><span className="opacity-70">Storage class:</span> {details.storageClass ?? ''}</div>
-              </>
-            )}
-            {bucket && (
-              <div className="col-span-2"><span className="opacity-70">S3 URI:</span> <span className="font-mono">s3://{bucket}/{keyStr}</span></div>
-            )}
-          </div>
+    <div className="p-3 text-sm">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+  {/* Row 1: Key (left) */}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="opacity-70 select-none w-20">Key:</span>
+          <button
+            ref={keyBtnRef}
+            className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1"
+            title="Copy key"
+            aria-label="Copy key"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(keyStr) } catch {}
+              // Tooltip feedback
+              if (copyTimer.current) window.clearTimeout(copyTimer.current)
+              const rect = keyBtnRef.current?.getBoundingClientRect()
+              if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
+              setCopied(true)
+              copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
+            }}
+          >
+            <CopyIcon />
+          </button>
+          <span className="font-mono break-all">{keyStr}</span>
         </div>
+
+        {/* Row 1: Last modified (right) */}
+        {details ? (
+          <div><span className="opacity-70">Last modified:</span> {details.lastModified ? new Date(details.lastModified).toLocaleString() : '-'}</div>
+        ) : <div />}
+
+        {details && (
+          <>
+            {/* Row 2: S3 URI (left) */}
+            {bucket ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="opacity-70 select-none w-20">S3 URI:</span>
+                <button
+                  ref={uriBtnRef}
+                  className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1"
+                  title="Copy S3 URI"
+                  aria-label="Copy S3 URI"
+                  onClick={async () => {
+                    if (!s3Uri) return
+                    try { await navigator.clipboard.writeText(s3Uri) } catch {}
+                    if (copyTimer.current) window.clearTimeout(copyTimer.current)
+                    const rect = uriBtnRef.current?.getBoundingClientRect()
+                    if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
+                    setCopied(true)
+                    copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
+                  }}
+                >
+                  <CopyIcon />
+                </button>
+                <span className="font-mono break-all">{s3Uri}</span>
+              </div>
+            ) : <div />}
+
+            {/* Row 2: Storage class (right) */}
+            <div><span className="opacity-70">Storage class:</span> {details.storageClass ?? ''}</div>
+
+            {/* Row 3: ETag (left) */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="opacity-70 select-none w-20">ETag:</span>
+              <button
+                ref={etagBtnRef}
+                className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1 disabled:opacity-40"
+                title="Copy ETag"
+                aria-label="Copy ETag"
+                disabled={!details.etag}
+                onClick={async () => {
+                  if (!details.etag) return
+                  try { await navigator.clipboard.writeText(details.etag) } catch {}
+                  if (copyTimer.current) window.clearTimeout(copyTimer.current)
+                  const rect = etagBtnRef.current?.getBoundingClientRect()
+                  if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
+                  setCopied(true)
+                  copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
+                }}
+              >
+                <CopyIcon />
+              </button>
+              <span className="font-mono break-all">{details.etag ?? ''}</span>
+            </div>
+
+            {/* Row 3: Size (right) */}
+            <div><span className="opacity-70">Size:</span> {formatSize(details.size || 0)}</div>
+          </>
+        )}
       </div>
+
+      {/* Tooltip via portal */}
+      {copied && tooltipPos && createPortal(
+        <div className="fixed z-[9999] px-2 py-0.5 rounded text-xs menu-bg border border-default shadow pointer-events-none"
+          style={{ left: tooltipPos.x, top: tooltipPos.y, transform: 'translate(-50%, -100%)' }}
+        >
+          Copied
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -391,38 +529,33 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
   }
 
   return (
-    <div className="p-3 space-y-4 text-sm">
-      <div>
-  <div className="font-semibold mb-1">Details</div>
-        <div className="rounded border border-default">
-          <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-2 items-start">
-            <div><span className="opacity-70">Name:</span> <span className="font-mono break-all">{prefix}</span></div>
-            <div><span className="opacity-70">Storage class:</span> <span className="opacity-80">-</span></div>
-            <div><span className="opacity-70">Total objects:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalObjects.toLocaleString()}</div>
-            <div><span className="opacity-70">Total files:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFiles.toLocaleString()}</div>
-            <div><span className="opacity-70">Total folders:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFolders.toLocaleString()}</div>
-            <div><span className="opacity-70">Total size:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{formatSize(totalBytes)}</div>
-            <div className="col-span-2 flex flex-wrap items-center gap-2 mt-2">
-              <div className="opacity-60">Pages scanned: {pagesScanned}</div>
-              {error && <div className="alert alert-error">{error}</div>}
-              <div className="ml-auto flex items-center gap-2">
-                {scanToken && !isScanning && !isAborted && (
-                  <button onClick={continueToCompletion} className="btn btn-secondary text-xs cursor-pointer">Continue collecting</button>
-                )}
-                {(scanToken || isScanning) && !isAborted && (
-                  <button onClick={abortScan} className="btn text-xs cursor-pointer" style={{ backgroundColor: 'rgba(220,38,38,0.12)', color: 'var(--color-fg)' }}>Stop</button>
-                )}
-                {!scanToken && !isScanning && (
-                  <button onClick={() => { setScanToken(undefined); setTotalObjects(0); setTotalFiles(0); setTotalFolders(0); setTotalBytes(0); setPagesScanned(0); setAutoStopped(false); abortRef.current = false; return scanNextPage(); }} className="btn btn-secondary text-xs cursor-pointer">Rescan</button>
-                )}
-                {isAborted && (
-                  <>
-                    <span className="opacity-70">Stopped</span>
-                    <button onClick={() => { setIsAborted(false); abortRef.current = false; if (scanToken) { continueToCompletion() } else { scanNextPage() } }} className="btn btn-secondary text-xs cursor-pointer">Resume</button>
-                  </>
-                )}
-              </div>
-            </div>
+    <div className="p-3 text-sm">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2 items-start">
+        <div><span className="opacity-70">Name:</span> <span className="font-mono break-all">{prefix}</span></div>
+        <div><span className="opacity-70">Storage class:</span> <span className="opacity-80">-</span></div>
+        <div><span className="opacity-70">Total objects:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalObjects.toLocaleString()}</div>
+        <div><span className="opacity-70">Total files:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFiles.toLocaleString()}</div>
+        <div><span className="opacity-70">Total folders:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFolders.toLocaleString()}</div>
+        <div><span className="opacity-70">Total size:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{formatSize(totalBytes)}</div>
+        <div className="col-span-2 flex flex-wrap items-center gap-2 mt-2">
+          <div className="opacity-60">Pages scanned: {pagesScanned}</div>
+          {error && <div className="alert alert-error">{error}</div>}
+          <div className="ml-auto flex items-center gap-2">
+            {scanToken && !isScanning && !isAborted && (
+              <button onClick={continueToCompletion} className="btn btn-secondary text-xs cursor-pointer">Continue collecting</button>
+            )}
+            {(scanToken || isScanning) && !isAborted && (
+              <button onClick={abortScan} className="btn text-xs cursor-pointer" style={{ backgroundColor: 'rgba(220,38,38,0.12)', color: 'var(--color-fg)' }}>Stop</button>
+            )}
+            {!scanToken && !isScanning && (
+              <button onClick={() => { setScanToken(undefined); setTotalObjects(0); setTotalFiles(0); setTotalFolders(0); setTotalBytes(0); setPagesScanned(0); setAutoStopped(false); abortRef.current = false; return scanNextPage(); }} className="btn btn-secondary text-xs cursor-pointer">Rescan</button>
+            )}
+            {isAborted && (
+              <>
+                <span className="opacity-70">Stopped</span>
+                <button onClick={() => { setIsAborted(false); abortRef.current = false; if (scanToken) { continueToCompletion() } else { scanNextPage() } }} className="btn btn-secondary text-xs cursor-pointer">Resume</button>
+              </>
+            )}
           </div>
         </div>
       </div>

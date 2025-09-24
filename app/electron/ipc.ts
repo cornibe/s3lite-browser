@@ -57,6 +57,18 @@ export function registerIpc() {
       throw e
     }
   })
+  ipcMain.handle(IpcChannels.S3_GET_OBJECT_PREVIEW, async (_e, params) => {
+    const t = Date.now()
+    try {
+      const out = await s3.getObjectPreview(params)
+      getLogger().debug('ipc', 's3:getObjectPreview ok', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, bytes: (out.text?.length || 0), type: out.contentType || null, binary: out.isBinary })
+      return out
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to get object preview'
+      getLogger().warn('ipc', 's3:getObjectPreview error', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, error: msg })
+      throw e
+    }
+  })
   ipcMain.handle(IpcChannels.S3_LIST_PROFILES, async () => {
     const t = Date.now()
     try {
@@ -284,7 +296,8 @@ export function registerIpc() {
 
   ipcMain.handle(IpcChannels.XFER_CONTROL, async (e, params) => {
     try {
-      const result = transfers.control(params.jobId, params.action)
+      const win = BrowserWindow.fromWebContents(e.sender)!
+      const result = transfers.control(win, params.jobId, params.action)
       getLogger().debug('xfer', 'control', { jobId: params.jobId, action: params.action })
       return { ok: true as const, result }
     } catch (err) {

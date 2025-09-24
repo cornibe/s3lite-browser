@@ -88,7 +88,7 @@ export default function App() {
           <button
             aria-label="Resize sidebar"
             onMouseDown={startSidebarDrag}
-            className={`w-1.5 cursor-col-resize hover:w-2 transition-[width] flex items-center justify-center select-none ${dark ? 'bg-[#2a2d2e] hover:bg-[#323233]' : 'bg-neutral-200 hover:bg-neutral-300'}`}
+            className={`w-1.5 cursor-col-resize flex items-center justify-center select-none ${dark ? 'bg-[#2a2d2e] hover:bg-[#323233]' : 'bg-neutral-200 hover:bg-neutral-300'}`}
             title="Drag to resize"
           >
             <svg className="w-3 h-3 opacity-70" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -103,7 +103,7 @@ export default function App() {
         <button
           aria-label="Resize transfer queue"
           onMouseDown={startQueueDrag}
-          className={`h-1.5 cursor-row-resize hover:h-2 transition-[height] flex items-center justify-center select-none ${dark ? 'bg-[#2a2d2e] hover:bg-[#323233]' : 'bg-neutral-200 hover:bg-neutral-300'}`}
+          className={`h-1.5 cursor-row-resize flex items-center justify-center select-none ${dark ? 'bg-[#2a2d2e] hover:bg-[#323233]' : 'bg-neutral-200 hover:bg-neutral-300'}`}
           title="Drag to resize"
         >
           <svg className="w-3 h-3 opacity-70" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

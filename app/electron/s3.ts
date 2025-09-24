@@ -1,4 +1,4 @@
-import { S3Client, ListBucketsCommand, ListObjectsV2Command, CreateBucketCommand, DeleteObjectCommand, DeleteObjectsCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, ListBucketsCommand, ListObjectsV2Command, CreateBucketCommand, DeleteObjectCommand, DeleteObjectsCommand, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -462,5 +462,67 @@ export async function createFolder(bucket: string, prefix: string): Promise<void
     getLogger().info('aws', 'createFolder', { bucket, prefix: folderKey, durationMs: Date.now() - start })
   } catch (err) {
     throw toFriendlyError(`Create folder s3://${bucket}/${prefix}`, err)
+  }
+}
+
+// Fetch up to maxBytes from start of an object for preview. Returns best-effort text for non-binary.
+export async function getObjectPreview(params: { bucket: string; key: string; maxBytes?: number }): Promise<{ contentType?: string; isBinary: boolean; truncated: boolean; text?: string }> {
+  const c = ensureClient()
+  const start = Date.now()
+  const maxBytes = Math.min(Math.max(1, params.maxBytes ?? 256 * 1024), 1024 * 1024) // clamp 1..1MiB safety
+  try {
+    // First, HEAD to detect zero-byte objects and content type without risking unsatisfiable ranges
+    const head = await c.send(new HeadObjectCommand({ Bucket: params.bucket, Key: params.key }))
+    const size = Number(head.ContentLength || 0)
+    const contentTypeHead = (head.ContentType || undefined) as string | undefined
+    if (size === 0) {
+      getLogger().debug('aws', 'getObjectPreview zero-byte', { bucket: params.bucket, key: params.key, type: contentTypeHead || null, durationMs: Date.now() - start })
+      // Zero-byte -> empty text preview, non-binary
+      return { contentType: contentTypeHead, isBinary: false, truncated: false, text: '' }
+    }
+    const res = await c.send(new GetObjectCommand({ Bucket: params.bucket, Key: params.key, Range: `bytes=0-${maxBytes - 1}` }))
+    const contentType = (res.ContentType || undefined) as string | undefined
+    const contentRange = (res.ContentRange || undefined) as string | undefined
+    // Read body into Buffer
+    // Node 18 readable: res.Body.transformToByteArray may exist in fetch API; for AWS SDK v3 in Node, Body is Readable
+    const chunks: Buffer[] = []
+    const body: any = res.Body as any
+    if (body && typeof body.on === 'function') {
+      await new Promise<void>((resolve, reject) => {
+        body.on('data', (d: Buffer) => chunks.push(Buffer.from(d)))
+        body.on('end', () => resolve())
+        body.on('error', (e: any) => reject(e))
+      })
+    } else if (body && typeof body.arrayBuffer === 'function') {
+      const ab = await body.arrayBuffer()
+      chunks.push(Buffer.from(ab))
+    }
+    const buf = Buffer.concat(chunks)
+  const totalLen = typeof res.ContentLength === 'number' ? res.ContentLength : buf.length
+    // Heuristic: treat as text if content-type starts with text/ or json/xml, or if buffer has no non-utf8 bytes
+    const type = (contentType || '').toLowerCase()
+    const typeHints = ['text/', 'application/json', 'application/xml', 'application/xhtml', 'application/javascript', 'application/x-javascript', 'image/svg']
+    let isBinary = !typeHints.some(h => type.startsWith(h))
+    // If unknown type, sniff bytes for control chars beyond tab/newline/carriage
+    if (isBinary) {
+      let suspicious = 0
+      const maxScan = Math.min(buf.length, 4096)
+      for (let i = 0; i < maxScan; i++) {
+        const b = buf[i]
+        if (b === 9 || b === 10 || b === 13) continue
+        if (b < 32 || b === 0) { suspicious++; if (suspicious > 8) break }
+      }
+      if (suspicious <= 8) isBinary = false
+    }
+    let text: string | undefined
+    if (!isBinary) {
+      // try utf-8 decode; replace invalid
+      text = buf.toString('utf8')
+    }
+  const truncated = Boolean(contentRange) || buf.length >= maxBytes
+    getLogger().debug('aws', 'getObjectPreview', { bucket: params.bucket, key: params.key, type: contentType || null, bytes: buf.length, truncated, durationMs: Date.now() - start })
+    return { contentType, isBinary, truncated, text }
+  } catch (err) {
+    throw toFriendlyError(`Get object preview s3://${params.bucket}/${params.key}`, err)
   }
 }
