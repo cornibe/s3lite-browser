@@ -6,7 +6,7 @@ import TransferQueue from './TransferQueue'
 // Simple tabs component to host Properties and Transfers at the bottom
 export default function BottomPanel() {
   const { selectedKey, settings, setSettings } = useStore() as any
-  const activeTab: 'properties'|'transfers'|'log' = (settings.bottomPanelTab as any) || 'transfers'
+  const activeTab: 'properties'|'transfers'|'log'|'preview' = (settings.bottomPanelTab as any) || 'transfers'
   useEffect(() => {
     if (selectedKey && activeTab !== 'properties') setSettings({ bottomPanelTab: 'properties' })
   }, [selectedKey])
@@ -35,9 +35,16 @@ export default function BottomPanel() {
         >
           Log
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'preview' ? 'tab-btn-active' : ''}`}
+          aria-selected={activeTab === 'preview'}
+          onClick={() => useStore.getState().setSettings({ bottomPanelTab: 'preview' })}
+        >
+          Preview
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
-        {activeTab === 'properties' ? <PropertiesPanel /> : activeTab === 'transfers' ? <TransfersPanel /> : <LogPanel />}
+        {activeTab === 'properties' ? <PropertiesPanel /> : activeTab === 'transfers' ? <TransfersPanel /> : activeTab === 'log' ? <LogPanel /> : <PreviewPanel />}
       </div>
     </div>
   )
@@ -58,6 +65,43 @@ function TransfersPanel() {
   return (
     <div className="h-full overflow-hidden">
       <TransferQueue />
+    </div>
+  )
+}
+
+// Preview panel: fetches up to 256 KiB on-demand when active
+function PreviewPanel() {
+  const { bucket, selectedKey, selectedType } = useStore() as any
+  const [state, setState] = React.useState({ loading: false } as any)
+  const loadedKeyRef = React.useRef(undefined as any)
+
+  async function load() {
+    if (!bucket || !selectedKey || selectedType !== 'object') return
+    if (loadedKeyRef.current === selectedKey) return
+    setState({ loading: true })
+    try {
+      const res = await (window as any).api.s3.getObjectPreview({ bucket, key: selectedKey, maxBytes: 256 * 1024 })
+      loadedKeyRef.current = selectedKey
+      setState({ loading: false, text: res.text, isBinary: res.isBinary, contentType: res.contentType, truncated: res.truncated })
+    } catch (e) {
+      setState({ loading: false, error: (e as Error)?.message || 'Failed to load preview' })
+    }
+  }
+
+  useEffect(() => { load() }, [bucket, selectedKey, selectedType])
+
+  if (!bucket || !selectedKey) return <div className="px-3 py-2 text-sm opacity-70">Select a file to preview.</div>
+  if (selectedType !== 'object') return <div className="px-3 py-2 text-sm opacity-70">Preview is available for files only.</div>
+  if (state.loading) return <div className="px-3 py-2 text-sm opacity-70">Loading preview…</div>
+  if (state.error) return <div className="px-3 py-2 text-sm text-red-600">{state.error}</div>
+  if (state.isBinary) return <div className="px-3 py-2 text-sm opacity-70">Binary file. Preview not available.</div>
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-2 py-1 border-b border-default bg-header text-xs opacity-80 flex gap-2">
+        <div>Type: {state.contentType || 'unknown'}</div>
+        <div>Size shown: up to 256 KB{state.truncated ? ' (truncated)' : ''}</div>
+      </div>
+      <pre className="flex-1 m-0 p-3 text-xs overflow-auto"><code>{state.text || ''}</code></pre>
     </div>
   )
 }

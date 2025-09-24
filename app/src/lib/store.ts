@@ -32,7 +32,7 @@ type SettingsState = {
   darkMode?: boolean
   compactMode?: boolean
   mounts?: Array<{ bucket: string; prefix?: string }>
-  bottomPanelTab?: 'properties' | 'transfers' | 'log'
+  bottomPanelTab?: 'properties' | 'transfers' | 'log' | 'preview'
   sidebarWidthPx?: number
   queueHeightPx?: number
   folderScanAutoPages?: number
@@ -133,7 +133,7 @@ function loadSettings(): SettingsState {
         darkMode: Boolean(parsed.darkMode),
     compactMode: Boolean(parsed.compactMode),
         mounts: Array.isArray(parsed.mounts) ? parsed.mounts.filter((m: any) => m && typeof m.bucket === 'string').map((m: any) => ({ bucket: m.bucket, prefix: m.prefix || undefined })) : [],
-  bottomPanelTab: parsed.bottomPanelTab === 'properties' || parsed.bottomPanelTab === 'log' ? parsed.bottomPanelTab : 'transfers',
+  bottomPanelTab: parsed.bottomPanelTab === 'properties' || parsed.bottomPanelTab === 'log' || parsed.bottomPanelTab === 'preview' ? parsed.bottomPanelTab : 'transfers',
         sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
         queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
         folderScanAutoPages: typeof parsed.folderScanAutoPages === 'number' && parsed.folderScanAutoPages > 0 ? parsed.folderScanAutoPages : 10,

@@ -47,6 +47,20 @@ export type ProfileInfo = {
   isSso?: boolean
 }
 
+// Object preview types
+export type GetObjectPreviewParams = {
+  bucket: string
+  key: string
+  maxBytes?: number // default 256 KiB
+}
+
+export type ObjectPreviewResult = {
+  contentType?: string
+  isBinary: boolean
+  truncated: boolean
+  text?: string
+}
+
 // New operation types
 export type CreateBucketParams = {
   bucketName: string
@@ -163,6 +177,7 @@ export interface RendererAPI {
     deleteObjects(params: DeleteObjectsParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
     deleteFolder(params: DeleteFolderParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
     createFolder(params: CreateFolderParams): Promise<{ ok: true } | { ok: false; error: string }>
+  getObjectPreview(params: GetObjectPreviewParams): Promise<ObjectPreviewResult>
   }
   env: {
     isDev(): boolean
@@ -197,6 +212,7 @@ export const IpcChannels = {
   S3_LIST_BUCKETS: 's3:listBuckets',
   S3_LIST_OBJECTS: 's3:listObjects',
   S3_FOLDER_STATS_PAGE: 's3:folderStatsPage',
+  S3_GET_OBJECT_PREVIEW: 's3:getObjectPreview',
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
   S3_GET_AWS_FILES: 's3:getAwsFiles',
