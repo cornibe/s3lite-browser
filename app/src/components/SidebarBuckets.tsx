@@ -252,7 +252,16 @@ export default function SidebarBuckets() {
                 className="absolute right-1 top-1 h-5 w-5 rounded row-hover flex items-center justify-center"
                 title={isProfileOpen ? 'Close' : 'Open'}
                 aria-label={isProfileOpen ? 'Close profile list' : 'Open profile list'}
-                onMouseDown={(e) => { e.preventDefault(); profileInputRef.current?.focus(); setIsProfileOpen(o => !o) }}
+                onMouseDown={(e) => {
+                  // When opening via the arrow, clear the query so the full list shows
+                  // (otherwise it would be filtered to the currently selected profile)
+                  e.preventDefault()
+                  clearOnFocusRef.current = true
+                  profileInputRef.current?.focus()
+                  setIsProfileOpen(o => !o)
+                  // Ensure active index starts at first item when opening
+                  if (!isProfileOpen) setActiveProfileIdx(0)
+                }}
               >
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden>
                   <path d="M6 9l6 6 6-6"/>
@@ -321,8 +330,7 @@ export default function SidebarBuckets() {
             </button>
           </div>
         )}
-        {/* Separator between Profile and Buckets */}
-        <div className="border-t border-default" />
+  {/* Separator between Profile and Buckets removed to avoid double line */}
       </div>
       {/* Buckets header, actions, and filter - sticky sibling of list */}
       <div className="sticky top-0 bg-header z-10 pt-2 px-3">
@@ -383,7 +391,7 @@ export default function SidebarBuckets() {
         (data && data.length > 0) ? (
       <ul
         ref={bucketListRef}
-        className={`text-sm bg-header outline-none`}
+        className={`text-sm bg-header outline-none overflow-x-hidden`}
         role="listbox"
         aria-label="Buckets"
         tabIndex={0}
@@ -412,7 +420,7 @@ export default function SidebarBuckets() {
                   >
                     <span className="inline-flex items-center gap-2">
                       <BucketIcon className="w-4 h-4 opacity-80" />
-                      <span className="truncate">{name}</span>
+                      <span className="truncate" title={name}>{name}</span>
                     </span>
                   </button>
                 </li>

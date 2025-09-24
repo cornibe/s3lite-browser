@@ -33,6 +33,10 @@
   --color-success-bg: #dcfce7;    /* green-100 */
   --color-success-border: #bbf7d0;/* green-200 */
   --color-success-text: #065f46;  /* emerald-800 */
+  /* Scrollbar tokens (light) */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.45);
+  --scrollbar-track: transparent;
   }
 
   /* Theme tokens (dark) */
@@ -63,10 +67,26 @@
   --color-success-bg: rgba(16, 185, 129, 0.18); /* emerald-500 @ 18% */
   --color-success-border: #065f46;              /* emerald-800 */
   --color-success-text: #bbf7d0;                /* green-200 */
+  /* Scrollbar tokens (dark) - VS Code-like */
+  --scrollbar-thumb: rgba(121, 121, 121, 0.6);
+  --scrollbar-thumb-hover: rgba(150, 150, 150, 0.75);
+  --scrollbar-track: transparent;
   }
 
   /* Set base background/text colors for both themes */
   body { background-color: var(--color-bg); color: var(--color-fg); }
+  /* Global scrollbar styling (WebKit + Firefox) */
+  * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 8px;
+    border: 2px solid transparent; /* create padding so thumb is thinner */
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+  *::-webkit-scrollbar-corner { background: transparent; }
 }
 
 /* Small utility layer for theme-aware colors */

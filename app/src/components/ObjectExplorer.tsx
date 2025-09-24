@@ -6,6 +6,7 @@ import type { S3ObjectItem, S3Folder, TransferEvent } from '../../electron/types
 import { trace, debug, info } from '../lib/log'
 import CreateFolderModal from './CreateFolderModal'
 import DeleteConfirmationModal from './DeleteConfirmationModal'
+import MountLocationModal from './MountLocationModal'
 
 type Entry = (
   | { type: 'folder'; data: S3Folder }
@@ -117,7 +118,7 @@ function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
 }
 
 export default function ObjectExplorer() {
-  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab, showToast, selectBucket } = useStore() as any
+  const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab, showToast, selectBucket, settings, setSettings } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
   const listRef = useRef(null as any)
   const contentRef = useRef(null as any)
@@ -135,6 +136,8 @@ export default function ObjectExplorer() {
   const [showProps, setShowProps] = useState(null as any)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState(null as any)
+  // Mount modal state
+  const [mountInit, setMountInit] = useState(null as { bucket: string; prefix?: string } | null)
   // Edit path state
   const [editingPath, setEditingPath] = useState(false)
   const [pathInput, setPathInput] = useState('')
@@ -143,7 +146,7 @@ export default function ObjectExplorer() {
   const [sortBy, setSortBy] = useState('name')
   const [sortDir, setSortDir] = useState('asc')
   // Multi-select state (local to explorer)
-  const [selectedSet, setSelectedSet] = useState(new Set() as any)
+  const [selectedSet, setSelectedSet] = useState(new Set<string>() as Set<string>)
   const [anchorIndex, setAnchorIndex] = useState(null as any)
   const [focusedIndex, setFocusedIndex] = useState(null as any)
   // Type-to-select buffer
@@ -1196,6 +1199,7 @@ export default function ObjectExplorer() {
   <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} ref={(el) => { if (el) rowRefs.current.set(rowKey, el); else rowRefs.current.delete(rowKey) }} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={(e) => {
                       const key = rowKey
                       const isMeta = (e as any).metaKey
+                      let nextSet: Set<string> | undefined
                       if (e.shiftKey) {
                         // Range select from anchor to i
                         const from = anchorIndex ?? i
@@ -1205,22 +1209,40 @@ export default function ObjectExplorer() {
                         setSelectedSet(newSet)
                         setFocusedIndex(i)
                         setAnchorIndex(from)
+                        nextSet = newSet
                       } else if (e.ctrlKey || isMeta) {
-                        // Toggle
+                        // Toggle selection for this row
                         const newSet = new Set(selectedSet)
                         if (newSet.has(key)) newSet.delete(key); else newSet.add(key)
                         setSelectedSet(newSet)
                         setFocusedIndex(i)
                         if (anchorIndex === null) setAnchorIndex(i)
+                        nextSet = newSet
                       } else {
                         // Single select
-                        setSelectedSet(new Set([key]))
+                        const newSet: Set<string> = new Set([key])
+                        setSelectedSet(newSet)
                         setAnchorIndex(i)
                         setFocusedIndex(i)
+                        nextSet = newSet
                       }
-                      trace('ui', 'select item', { key: it.type === 'object' ? it.data.key : it.data.prefix })
-                      setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
-                      setSelectedDetails(it.type === 'object' ? { type: 'object', object: it.data } : { type: 'folder', folder: it.data })
+                      // Update global selected item based on the resulting set
+                      if (!nextSet || nextSet.size === 0) {
+                        trace('ui', 'select item (cleared)')
+                        setSelected(undefined, undefined)
+                        setSelectedDetails(undefined)
+                      } else {
+                        // Prefer clicked row if it remains selected; otherwise pick the first from the set
+                        const primaryKey = nextSet.has(key) ? key : Array.from(nextSet)[0]
+                        const entry = keyToEntry.get(primaryKey)
+                        if (entry) {
+                          const isObj = entry.type === 'object'
+                          const selKey = isObj ? (entry as any).data.key : (entry as any).data.prefix
+                          trace('ui', 'select item', { key: selKey })
+                          setSelected(selKey, isObj ? 'object' : 'folder')
+                          setSelectedDetails(isObj ? { type: 'object', object: (entry as any).data } : { type: 'folder', folder: (entry as any).data })
+                        }
+                      }
                     }} onContextMenu={(e) => onContextMenu(e, it)}>
                     <td className="px-3 py-2 font-medium">
                       <div className="flex items-center gap-2">
@@ -1333,6 +1355,19 @@ export default function ObjectExplorer() {
      >
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+          {contextMenu.item?.type === 'folder' && (
+            <button
+              className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer"
+              onClick={() => {
+                if (!bucket) return
+                const pfx = contextMenu.item.data.prefix
+                setMountInit({ bucket, prefix: pfx })
+                setContextMenu(null)
+              }}
+            >
+              Mount Folder
+            </button>
+          )}
           <div className="border-t border-default"></div>
           <button className="block w-full text-left px-3 py-2 text-red-600 row-hover menu-item cursor-pointer" onClick={() => handleDelete(contextMenu.item)}>
             Delete
@@ -1378,6 +1413,22 @@ export default function ObjectExplorer() {
         message={deleteConfirmation?.message || ''}
         itemCount={deleteConfirmation?.items?.length || 0}
         itemType={deleteConfirmation?.items && deleteConfirmation.items.length > 1 ? 'files' : (deleteConfirmation?.items?.[0]?.type === 'folder' ? 'folder' : 'file')}
+      />
+
+      {/* Mount selected folder modal */}
+      <MountLocationModal
+        isOpen={Boolean(mountInit)}
+        onClose={() => setMountInit(null)}
+        initialBucket={mountInit?.bucket}
+        initialPrefix={mountInit?.prefix}
+        onSubmit={(b, p) => {
+          const mounts = Array.isArray(settings?.mounts) ? [...settings.mounts] : []
+          const exists = mounts.some((m: any) => m.bucket === b && (m.prefix || '') === (p || ''))
+          if (!exists) {
+            mounts.push({ bucket: b, prefix: p })
+            setSettings({ mounts })
+          }
+        }}
       />
     </div>
   )
