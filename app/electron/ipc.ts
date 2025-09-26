@@ -1,7 +1,9 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import * as s3 from './s3'
 import * as transfers from './transfers'
-import { IpcChannels } from './types'
+import { IpcChannels, ExtraIpcChannels } from './types'
+import * as fs from 'fs'
+import * as path from 'path'
 import { getLogger, safeMeta, redact } from './log'
 
 export function registerIpc() {
@@ -244,6 +246,43 @@ export function registerIpc() {
   ipcMain.handle(IpcChannels.LOG_SET_LEVEL, async (_e, level: string) => { const l = (level || '').toUpperCase() as any; if (LEVELS.includes(l)) getLogger().setLevel(l); return { level: getLogger().getLevel() } })
   ipcMain.handle(IpcChannels.LOG_SET_CONSOLE_LEVEL, async (_e, level: string) => { const l = (level || '').toUpperCase() as any; if (LEVELS.includes(l)) getLogger().setConsoleLevel(l); return { level: getLogger().getConsoleLevel() } })
   ipcMain.handle(IpcChannels.LOG_OPEN_DIR, async () => { await getLogger().openLogsFolder(); return { ok: true as const } })
+
+  // Export object list to CSV
+  ipcMain.handle(ExtraIpcChannels.UI_EXPORT_OBJECT_LIST, async (e, params: { defaultPath?: string; rows: Array<Record<string, any>> }) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    try {
+      const res = await dialog.showSaveDialog(win, {
+        title: 'Save object list',
+        defaultPath: params.defaultPath || 'objects.csv',
+        filters: [{ name: 'CSV', extensions: ['csv'] }]
+      })
+      if (res.canceled || !res.filePath) return { ok: false as const, canceled: true }
+      const filePath = res.filePath
+      // Build CSV (simple RFC4180-ish escaping of quotes)
+      if (!params.rows || params.rows.length === 0) {
+        fs.writeFileSync(filePath, '')
+        return { ok: true as const, filePath, rows: 0 }
+      }
+      const headers = Object.keys(params.rows[0])
+      const escape = (v: any) => {
+        if (v === null || v === undefined) return ''
+        const s = String(v)
+        if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+        return s
+      }
+      const lines: string[] = []
+      lines.push(headers.map(escape).join(','))
+      for (const row of params.rows) {
+        lines.push(headers.map(h => escape(row[h])).join(','))
+      }
+      fs.writeFileSync(filePath, lines.join('\n'))
+      return { ok: true as const, filePath, rows: params.rows.length }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to export CSV'
+      getLogger().warn('ipc', 'exportObjectList error', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
 
   // Transfer handlers
   ipcMain.handle(IpcChannels.XFER_START_OBJECT, async (e, params) => {

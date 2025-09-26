@@ -32,7 +32,8 @@ const Channels = {
   XFER_START_OBJECT: 'xfer:startObject',
   XFER_START_PREFIX: 'xfer:startPrefix',
   XFER_START_UPLOAD: 'xfer:startUpload',
-  XFER_CONTROL: 'xfer:control'
+  XFER_CONTROL: 'xfer:control',
+  UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList'
 } as const
 
 const api: RendererAPI = {
@@ -68,11 +69,12 @@ const api: RendererAPI = {
       return ipcRenderer.invoke(Channels.UI_PROCESS_DROPPED_FILES, fileData)
     },
   showMessageBox: (options) => ipcRenderer.invoke(Channels.UI_MESSAGE_BOX, options),
-    onOpenSettings: (cb: () => void) => {
+  onOpenSettings: (cb: () => void) => {
       const handler = () => cb()
       ipcRenderer.on(Channels.UI_OPEN_SETTINGS, handler)
       return () => ipcRenderer.removeListener(Channels.UI_OPEN_SETTINGS, handler)
-    }
+  },
+  exportObjectList: (params: { defaultPath?: string; rows: Array<Record<string, any>> }) => ipcRenderer.invoke(Channels.UI_EXPORT_OBJECT_LIST, params)
   },
   log: {
     write: (payload) => ipcRenderer.invoke(Channels.LOG_WRITE, payload),

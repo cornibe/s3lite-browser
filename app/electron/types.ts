@@ -188,6 +188,7 @@ export interface RendererAPI {
     processDroppedFiles(fileData: Array<{ name: string; size: number; type: string }>): Promise<Array<{ path: string; size: number; name: string }>>
   onOpenSettings(cb: () => void): () => void
   showMessageBox(options: { type?: 'none' | 'info' | 'error' | 'question' | 'warning'; title?: string; message: string; detail?: string; buttons?: string[] }): Promise<{ response: number }>
+  exportObjectList(params: { defaultPath?: string; rows: Array<Record<string, any>> }): Promise<{ ok: true; filePath: string; rows: number } | { ok: false; error?: string; canceled?: boolean }>
   }
   log: {
     write(payload: { level: 'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL'; scope: string; msg: string; meta?: Record<string, unknown> }): Promise<void>
@@ -239,4 +240,9 @@ export const IpcChannels = {
   XFER_START_PREFIX: 'xfer:startPrefix',
   XFER_START_UPLOAD: 'xfer:startUpload',
   XFER_CONTROL: 'xfer:control'
+} as const
+
+// Custom UI utility channels (non-S3) can be extended here
+export const ExtraIpcChannels = {
+  UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList'
 } as const

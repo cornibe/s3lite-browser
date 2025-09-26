@@ -7,6 +7,7 @@ import { trace, debug, info } from '../lib/log'
 import CreateFolderModal from './CreateFolderModal'
 import DeleteConfirmationModal from './DeleteConfirmationModal'
 import MountLocationModal from './MountLocationModal'
+import ExportObjectListModal from './ExportObjectListModal'
 
 type Entry = (
   | { type: 'folder'; data: S3Folder }
@@ -136,6 +137,7 @@ export default function ObjectExplorer() {
   const [showProps, setShowProps] = useState(null as any)
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState(null as any)
+  const [showExport, setShowExport] = useState(false)
   // Mount modal state
   const [mountInit, setMountInit] = useState(null as { bucket: string; prefix?: string } | null)
   // Edit path state
@@ -1204,7 +1206,7 @@ export default function ObjectExplorer() {
                         // Range select from anchor to i
                         const from = anchorIndex ?? i
                         const [lo, hi] = from <= i ? [from, i] : [i, from]
-                        const newSet = new Set<string>()
+                        const newSet: Set<string> = new Set<string>()
                         for (let j = lo; j <= hi; j++) newSet.add(keyOf(visibleItems[j]))
                         setSelectedSet(newSet)
                         setFocusedIndex(i)
@@ -1212,7 +1214,7 @@ export default function ObjectExplorer() {
                         nextSet = newSet
                       } else if (e.ctrlKey || isMeta) {
                         // Toggle selection for this row
-                        const newSet = new Set(selectedSet)
+                        const newSet: Set<string> = new Set(selectedSet as Set<string>)
                         if (newSet.has(key)) newSet.delete(key); else newSet.add(key)
                         setSelectedSet(newSet)
                         setFocusedIndex(i)
@@ -1355,6 +1357,7 @@ export default function ObjectExplorer() {
      >
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
+          <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => { setShowExport(true); setContextMenu(null) }}>Export object list</button>
           {contextMenu.item?.type === 'folder' && (
             <button
               className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer"
@@ -1429,6 +1432,19 @@ export default function ObjectExplorer() {
             setSettings({ mounts })
           }
         }}
+      />
+      <ExportObjectListModal
+        isOpen={showExport}
+        onClose={() => setShowExport(false)}
+        bucket={bucket || ''}
+        currentPrefix={prefix}
+        selection={(() => {
+          if (selectedSet.size > 0) {
+            return Array.from(selectedSet).map(k => keyToEntry.get(k)!).filter(Boolean) as any
+          }
+          const it = items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
+          return it ? [it] as any : []
+        })()}
       />
     </div>
   )
