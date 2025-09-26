@@ -400,6 +400,13 @@ export const useStore = create<State & Actions>((set, get) => {
           const clamped = Math.min(Math.max(0, it.bytesTransferred || 0), total)
           const finalBytes = it.status === 'completed' ? total : clamped
           items[it.id] = { ...it, bytesTransferred: finalBytes }
+        } else if (evt.type === 'items-added') {
+          for (const it of evt.items) {
+            const total = it.size || 0
+            const clamped = Math.min(Math.max(0, it.bytesTransferred || 0), total)
+            const finalBytes = it.status === 'completed' ? total : clamped
+            items[it.id] = { ...it, bytesTransferred: finalBytes }
+          }
         }
         const transfers = { jobs, items }
         // commit back to tab

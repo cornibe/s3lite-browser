@@ -147,7 +147,7 @@ export type TransferJob = {
   bucket: string
   prefix: string
   destDir: string
-  status: 'queued' | 'active' | 'paused' | 'completed' | 'failed' | 'canceled' | 'in-progress'
+  status: 'queued' | 'active' | 'paused' | 'completed' | 'failed' | 'canceled' | 'in-progress' | 'enumerating'
   totalBytes: number
   completedBytes: number
   itemCount: number
@@ -161,6 +161,8 @@ export type TransferEvent =
   | { type: 'item-state'; jobId: string; item: TransferItem }
   | { type: 'job-complete'; jobId: string }
   | { type: 'job-error'; jobId: string; error: string }
+  // Future batching extension (not yet emitted): batch addition of items
+  | { type: 'items-added'; jobId: string; items: TransferItem[] }
 
 export interface RendererAPI {
   s3: {

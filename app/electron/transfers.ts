@@ -64,6 +64,20 @@ function emit(win: BrowserWindow | null, evt: TransferEvent) {
   win.webContents.send(IpcChannels.XFER_EVENT, evt)
 }
 
+const activeStreams = new Map<string, NodeJS.ReadableStream>()
+let lastEmitMap: Record<string, number> = {}
+function emitThrottled(win: BrowserWindow | null, evt: TransferEvent, key?: string) {
+  const now = Date.now()
+  const k = key || (evt.type === 'item-state' ? evt.item.id : evt.type === 'job-state' ? evt.job.id : undefined)
+  if (k) {
+    const last = lastEmitMap[k] || 0
+    const isTerminal = evt.type === 'item-state' ? ['completed','failed','canceled'].includes(evt.item.status) : false
+    if (!isTerminal && now - last < 150) return
+    lastEmitMap[k] = now
+  }
+  emit(win, evt)
+}
+
 function recalcJobProgress(job: TransferJob) {
   let sum = 0
   for (const it of items.values()) if (it.jobId === job.id) sum += Math.min(it.bytesTransferred, it.size)
@@ -90,22 +104,13 @@ function safeJoin(base: string, rel: string) {
 
 async function ensureDir(p: string) { await fs.promises.mkdir(p, { recursive: true }) }
 
-function atomicPaths(finalPath: string) {
-  return { part: finalPath + '.part', manifest: finalPath + '.part.json' }
-}
+function atomicPaths(finalPath: string) { return { part: finalPath + '.part', manifest: finalPath + '.part.json' } }
 
-async function readManifest(p: string): Promise<Manifest | undefined> {
-  try { const raw = await fs.promises.readFile(p, 'utf8'); return JSON.parse(raw) } catch { return undefined }
-}
+async function readManifest(p: string): Promise<Manifest | undefined> { try { const raw = await fs.promises.readFile(p, 'utf8'); return JSON.parse(raw) } catch { return undefined } }
 async function writeManifest(p: string, m: Manifest) { await fs.promises.writeFile(p, JSON.stringify(m)) }
 async function writeUploadManifest(p: string, m: UploadManifest) { await fs.promises.writeFile(p, JSON.stringify(m)) }
 
-async function fsync(fd: number) {
-  // Node's fs.promises doesn't expose fsync; use callback API wrapped as Promise
-  await new Promise<void>((resolve) => {
-    try { fs.fsync(fd, () => resolve()) } catch { resolve() }
-  })
-}
+async function fsync(fd: number) { await new Promise<void>(resolve => { try { fs.fsync(fd, () => resolve()) } catch { resolve() } }) }
 
 function speedEta(bytesTransferred: number, startedAt?: number, total?: number) {
   if (!startedAt) return { speedBps: 0, etaSeconds: undefined as number | undefined }
@@ -118,11 +123,7 @@ function speedEta(bytesTransferred: number, startedAt?: number, total?: number) 
 
 async function fileExists(p: string) { try { await fs.promises.access(p, fs.constants.F_OK); return true } catch { return false } }
 
-function splitName(name: string) {
-  const ext = path.extname(name)
-  const base = ext ? name.slice(0, -ext.length) : name
-  return { base, ext }
-}
+function splitName(name: string) { const ext = path.extname(name); const base = ext ? name.slice(0, -ext.length) : name; return { base, ext } }
 
 async function chooseDestPath(dir: string, name: string, policy: 'skip'|'overwrite'|'rename'|'prompt', win?: BrowserWindow): Promise<{ path: string; action: 'write'|'skip' } > {
   const p = path.join(dir, name)
@@ -130,10 +131,7 @@ async function chooseDestPath(dir: string, name: string, policy: 'skip'|'overwri
   if (policy === 'overwrite') return { path: p, action: 'write' }
   if (policy === 'skip' || policy === 'prompt') return { path: p, action: 'skip' }
   const { base, ext } = splitName(name)
-  for (let i = 1; i < 10000; i++) {
-    const candidate = path.join(dir, `${base} (${i})${ext}`)
-    if (!(await fileExists(candidate))) return { path: candidate, action: 'write' }
-  }
+  for (let i = 1; i < 10000; i++) { const candidate = path.join(dir, `${base} (${i})${ext}`); if (!(await fileExists(candidate))) return { path: candidate, action: 'write' } }
   return { path: p, action: 'skip' }
 }
 
@@ -142,59 +140,26 @@ async function promptOnConflict(win: BrowserWindow | null, destDir: string, base
   const p = path.join(destDir, baseName)
   if (!(await fileExists(p))) return { path: p, action: 'write' }
   const { base, ext } = splitName(baseName)
-  const res = await dialog.showMessageBox(parent!, {
-    type: 'question',
-    buttons: ['Overwrite', 'Skip', 'Rename'],
-    defaultId: 2,
-    cancelId: 1,
-    title: 'File already exists',
-    message: `${baseName} already exists in the destination folder. What would you like to do?`,
-    noLink: true
-  })
+  const res = await dialog.showMessageBox(parent!, { type: 'question', buttons: ['Overwrite', 'Skip', 'Rename'], defaultId: 2, cancelId: 1, title: 'File already exists', message: `${baseName} already exists in the destination folder. What would you like to do?`, noLink: true })
   const idx = res.response
-  if (idx === 0) {
-    // Overwrite
-    return { path: p, action: 'write' }
-  } else if (idx === 1) {
-    // Skip
-    return { path: p, action: 'skip' }
-  } else {
-    // Rename: find next available
-    for (let i = 1; i < 10000; i++) {
-      const candidateName = `${base} (${i})${ext}`
-      const candidate = path.join(destDir, candidateName)
-      if (!(await fileExists(candidate))) return { path: candidate, action: 'write' }
-    }
-    return { path: p, action: 'skip' }
-  }
+  if (idx === 0) return { path: p, action: 'write' }
+  if (idx === 1) return { path: p, action: 'skip' }
+  for (let i = 1; i < 10000; i++) { const candidateName = `${base} (${i})${ext}`; const candidate = path.join(destDir, candidateName); if (!(await fileExists(candidate))) return { path: candidate, action: 'write' } }
+  return { path: p, action: 'skip' }
 }
 
-async function headObject(bucket: string, key: string) {
-  const c = ensureClient()
-  return await c.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
-}
+async function headObject(bucket: string, key: string) { const c = ensureClient(); return await c.send(new HeadObjectCommand({ Bucket: bucket, Key: key })) }
 
 async function* listAllKeys(bucket: string, prefix: string) {
-  const c = ensureClient()
-  let token: string | undefined
-  do {
-    const out = await c.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }))
-    for (const o of out.Contents ?? []) {
-      const k = o.Key || ''
-      if (k.endsWith('/') && (o.Size ?? 0) === 0) continue
-      yield { key: k, size: o.Size ?? 0, etag: o.ETag }
-    }
-    token = out.IsTruncated ? out.NextContinuationToken : undefined
-  } while (token)
+  const c = ensureClient(); let token: string | undefined
+  do { const out = await c.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token })); for (const o of out.Contents ?? []) { const k = o.Key || ''; if (k.endsWith('/') && (o.Size ?? 0) === 0) continue; yield { key: k, size: o.Size ?? 0, etag: o.ETag } } token = out.IsTruncated ? out.NextContinuationToken : undefined } while (token)
 }
 
-export function getJob(jobId: string) { return jobs.get(jobId) }
-
+// Download: single object
 export async function startObject(win: BrowserWindow | null, params: StartObjectDownload) {
   const settings = applyDefaults(params.settings)
   const baseName = path.basename(params.key)
   const name = process.platform === 'win32' ? sanitizeWindows(baseName) : baseName
-  // Prompt on conflict when policy is 'prompt'
   const chosen = settings.overwritePolicy === 'prompt'
     ? await promptOnConflict(win, params.destDir, name)
     : await chooseDestPath(params.destDir, name, settings.overwritePolicy, win || undefined)
@@ -215,59 +180,144 @@ export async function startObject(win: BrowserWindow | null, params: StartObject
   } as any
   jobs.set(jobId, job)
   emit(win, { type: 'job-state', job })
-
   const head = await headObject(params.bucket, params.key)
   const size = head.ContentLength ?? 0
   job.totalBytes = size
   emit(win, { type: 'job-state', job })
-
-  const it: TransferItem = {
-    id: itemId,
-    jobId,
-    bucket: params.bucket,
-    key: params.key,
-    size,
-    etag: head.ETag ?? undefined,
-    destPath,
-    status: 'queued',
-    bytesTransferred: 0
-  }
-  items.set(itemId, it)
+  const it: TransferItem = { id: itemId, jobId, bucket: params.bucket, key: params.key, size, etag: head.ETag ?? undefined, destPath, status: 'queued', bytesTransferred: 0 }
+  items.set(it.id, it)
   emit(win, { type: 'item-state', jobId, item: it })
-
   try {
     await ensureDir(path.dirname(destPath))
-  if (chosen.action === 'skip') {
-      it.status = 'completed'
-      it.bytesTransferred = it.size
-      job.completedBytes += it.size
+    if (chosen.action === 'skip') {
+      it.status = 'completed'; it.bytesTransferred = it.size; job.completedBytes += it.size
     } else {
       await downloadSingle(win, job, it, settings)
     }
     job.completedCount = 1
     job.status = 'completed'
-    emit(win, { type: 'job-state', job })
-    emit(win, { type: 'job-complete', jobId })
+    emit(win, { type: 'job-state', job }); emit(win, { type: 'job-complete', jobId })
   } catch (e: any) {
     job.status = job.status === 'canceled' ? 'canceled' : 'failed'
-    it.status = job.status
-    it.error = e?.message || String(e)
-    emit(win, { type: 'item-state', jobId, item: it })
-  emit(win, { type: 'job-error', jobId, error: it.error || 'Download failed' })
+    it.status = job.status; it.error = e?.message || String(e)
+    emit(win, { type: 'item-state', jobId, item: it }); emit(win, { type: 'job-error', jobId, error: it.error || 'Download failed' })
   }
   return jobId
 }
 
+// Download: prefix (enumerates and downloads existing implementation kept)
 export async function startPrefix(win: BrowserWindow | null, params: StartPrefixDownload) {
   const settings = applyDefaults(params.settings)
   const jobId = newId('job')
+  const job: TransferJob = { id: jobId, type: 'prefix', bucket: params.bucket, prefix: params.prefix, destDir: params.destDir, status: 'queued', totalBytes: 0, completedBytes: 0, itemCount: 0, completedCount: 0, settings } as any
+  jobs.set(jobId, job)
+  emit(win, { type: 'job-state', job })
+  const keys: Array<{ key: string; size: number; etag?: string }> = []
+  for await (const k of listAllKeys(params.bucket, params.prefix)) keys.push(k)
+  job.itemCount = keys.length
+  job.totalBytes = keys.reduce((a, b) => a + (b.size || 0), 0)
+  emit(win, { type: 'job-state', job })
+  const rawRootName = params.prefix.replace(/\/+$/, '').split('/').filter(Boolean).pop() || ''
+  const rootName = process.platform === 'win32' ? sanitizeWindows(rawRootName) : rawRootName
+  const baseDestDir = rootName ? path.join(params.destDir, rootName) : params.destDir
+  try { await ensureDir(baseDestDir) } catch {}
+  let active = 0
+  let idx = 0
+  const next = async (): Promise<void> => {
+    if ((job as any).status === 'canceled') return
+    if (idx >= keys.length) return
+    while (active >= settings.objectConcurrency) await new Promise(r => setTimeout(r, 25))
+    const k = keys[idx++]; active++
+    const baseRel = k.key.slice(params.prefix.length).replace(/^\//, '')
+    const safeRel = process.platform === 'win32' ? sanitizeRelativePathPreserveDirs(baseRel) : baseRel
+    const chosen = settings.overwritePolicy === 'prompt' ? await promptOnConflict(win, baseDestDir, safeRel) : await chooseDestPath(baseDestDir, safeRel, settings.overwritePolicy, win || undefined)
+    const destPath = chosen.path
+    await ensureDir(path.dirname(destPath))
+    const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key: k.key, size: k.size, etag: k.etag, destPath, status: 'queued', bytesTransferred: 0 }
+    items.set(it.id, it)
+    emit(win, { type: 'item-state', jobId, item: it })
+    const run = async () => {
+      if (chosen.action === 'skip') { it.status = 'completed'; it.bytesTransferred = it.size; job.completedBytes += it.size }
+      else if ((job as any).status !== 'canceled') await downloadSingle(win, job, it, settings)
+    }
+    run().then(() => {
+      active--; job.completedCount++
+      if (job.completedCount >= job.itemCount && job.status !== 'failed' && job.status !== 'canceled') {
+        job.status = 'completed'; emit(win, { type: 'job-state', job }); emit(win, { type: 'job-complete', jobId })
+      }
+      void next()
+    }).catch((e) => {
+      active--; it.status = 'failed'; it.error = (e as any)?.message || String(e); job.status = 'failed'
+      emit(win, { type: 'item-state', jobId, item: it }); emit(win, { type: 'job-error', jobId, error: it.error! }); void next()
+    })
+  }
+  const kicks = Math.min(settings.objectConcurrency, keys.length)
+  for (let i = 0; i < kicks; i++) void next()
+  return jobId
+}
+
+// Streaming/batched upload enumeration implementation
+export async function startUpload(win: BrowserWindow | null, params: StartUploadParams) {
+  const settings = applyDefaults(params.settings)
+  const prefix = params.prefix ? params.prefix.replace(/\/+/, '/').replace(/^\//, '').replace(/\/?$/, '/') : ''
+
+  // Fast-path: multiple explicit files (no dirs), no prefix -> create individual jobs (legacy behavior)
+  let topHasDir = false
+  if (!prefix && params.files.length > 1) {
+    const topStats: Array<{ f: { path: string; size: number; name?: string }; st: fs.Stats | null }> = []
+    for (const f of params.files) {
+      try { const st = await fs.promises.stat(f.path); topStats.push({ f, st }); if (st.isDirectory()) topHasDir = true } catch { topStats.push({ f, st: null }) }
+    }
+    if (!topHasDir && topStats.every(t => t.st?.isFile())) {
+      const jobIds: string[] = []
+      for (const t of topStats) {
+        const file = t.f
+        const jobId = newId('job')
+        getLogger().debug('xfer', 'startUpload individual', { jobId, bucket: params.bucket, file: file.name })
+        const job: TransferJob = {
+          id: jobId,
+          type: 'object',
+          bucket: params.bucket,
+          prefix: '',
+          destDir: '',
+          status: 'queued',
+          totalBytes: file.size || 0,
+          completedBytes: 0,
+          itemCount: 1,
+          completedCount: 0,
+          settings
+        } as any
+        jobs.set(jobId, job)
+        emit(win, { type: 'job-state', job })
+        const key = file.name || path.basename(file.path)
+        const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key, size: file.size || 0, destPath: file.path, status: 'queued', bytesTransferred: 0 }
+        items.set(it.id, it)
+        emit(win, { type: 'item-state', jobId, item: it })
+        uploadOne(win, job, it, file.path, it.size, settings).then(() => {
+          job.completedCount = 1
+          job.status = 'completed'
+          emit(win, { type: 'job-state', job })
+          emit(win, { type: 'job-complete', jobId })
+        }).catch(e => {
+          it.status = 'failed'; it.error = (e as any)?.message || String(e); job.status = 'failed';
+          emit(win, { type: 'item-state', jobId, item: it })
+          emit(win, { type: 'job-error', jobId, error: it.error! })
+        })
+        jobIds.push(jobId)
+      }
+      return jobIds[0]
+    }
+  }
+
+  // Streaming (enumerating) single job path
+  const jobId = newId('job')
   const job: TransferJob = {
     id: jobId,
-    type: 'prefix',
+    type: 'prefix', // treat as collection upload
     bucket: params.bucket,
-    prefix: params.prefix,
-    destDir: params.destDir,
-    status: 'queued',
+    prefix,
+    destDir: '',
+    status: 'enumerating',
     totalBytes: 0,
     completedBytes: 0,
     itemCount: 0,
@@ -277,74 +327,148 @@ export async function startPrefix(win: BrowserWindow | null, params: StartPrefix
   jobs.set(jobId, job)
   emit(win, { type: 'job-state', job })
 
-  const keys: Array<{ key: string; size: number; etag?: string }> = []
-  for await (const k of listAllKeys(params.bucket, params.prefix)) keys.push(k)
-  job.itemCount = keys.length
-  job.totalBytes = keys.reduce((a, b) => a + (b.size || 0), 0)
-  emit(win, { type: 'job-state', job })
-
-  // Determine a root container folder under the destination named after the source prefix (e.g., "test1")
-  const rawRootName = params.prefix.replace(/\/+$/, '').split('/').filter(Boolean).pop() || ''
-  const rootName = process.platform === 'win32' ? sanitizeWindows(rawRootName) : rawRootName
-  const baseDestDir = rootName ? path.join(params.destDir, rootName) : params.destDir
-  try { await ensureDir(baseDestDir) } catch {}
-
+  const queue: string[] = [] // item ids waiting to start
   let active = 0
-  let idx = 0
-  const next = async (): Promise<void> => {
+  let enumerationDone = false
+  let lastBatchEmit = Date.now()
+  const BATCH_SIZE = 75
+  const BATCH_INTERVAL_MS = 200
+  let batch: TransferItem[] = []
+
+  const maybeDispatch = () => {
+    while (active < settings.objectConcurrency && queue.length) {
+      const itemId = queue.shift()!
+      const it = items.get(itemId)
+      if (!it) continue
+      if ((job as any).status === 'canceled') { it.status = 'canceled'; continue }
+      active++
+      // First actual upload switches job to in-progress
+      if (job.status === 'enumerating') {
+        job.status = 'in-progress'
+        emitThrottled(win, { type: 'job-state', job })
+      }
+      uploadOne(win, job, it, it.destPath, it.size, settings).then(() => {
+        active--
+        job.completedCount++
+        maybeFinish()
+        maybeDispatch()
+      }).catch(e => {
+        active--
+        it.status = 'failed'; it.error = (e as any)?.message || String(e)
+        job.status = job.status === 'canceled' ? 'canceled' : 'failed'
+        emit(win, { type: 'item-state', jobId, item: it })
+        emit(win, { type: 'job-error', jobId, error: it.error || 'upload failed' })
+        maybeFinish()
+        maybeDispatch()
+      })
+    }
+  }
+
+  const maybeFlushBatch = (force = false) => {
+    const now = Date.now()
+    if (!force && batch.length < BATCH_SIZE && (now - lastBatchEmit) < BATCH_INTERVAL_MS) return
+    if (!batch.length) return
+    emit(win, { type: 'items-added', jobId, items: batch.map(b => ({ ...b })) })
+    // Update job state (counts / total) after batch emission
+    emitThrottled(win, { type: 'job-state', job })
+    batch = []
+    lastBatchEmit = now
+    maybeDispatch()
+  }
+
+  const maybeFinish = () => {
+    if (!enumerationDone) return
+    if (job.status === 'failed' || job.status === 'canceled') return
+    if (job.completedCount >= job.itemCount) {
+      job.status = 'completed'
+      emit(win, { type: 'job-state', job })
+      emit(win, { type: 'job-complete', jobId })
+    }
+  }
+
+  const addFile = (absPath: string, relName: string, size: number) => {
     if ((job as any).status === 'canceled') return
-    if (idx >= keys.length) return
-    while (active >= settings.objectConcurrency) await new Promise(r => setTimeout(r, 25))
-    const k = keys[idx++]
-    active++
-    const baseRel = k.key.slice(params.prefix.length).replace(/^\//, '')
-    // Preserve subfolder paths under the chosen destination directory
-    const safeRel = process.platform === 'win32' ? sanitizeRelativePathPreserveDirs(baseRel) : baseRel
-    const chosen = settings.overwritePolicy === 'prompt'
-      ? await promptOnConflict(win, baseDestDir, safeRel)
-      : await chooseDestPath(baseDestDir, safeRel, settings.overwritePolicy, win || undefined)
-    // Use the exact chosen path so Rename/Skip decisions apply correctly
-    const destPath = chosen.path
-    await ensureDir(path.dirname(destPath))
-    const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key: k.key, size: k.size, etag: k.etag, destPath, status: 'queued', bytesTransferred: 0 }
+    const key = prefix + relName
+    const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key, size, destPath: absPath, status: 'queued', bytesTransferred: 0 }
     items.set(it.id, it)
-    emit(win, { type: 'item-state', jobId, item: it })
-    const run = async () => {
-      if (chosen.action === 'skip') {
-        it.status = 'completed'
-        it.bytesTransferred = it.size
-        job.completedBytes += it.size
-      } else {
-        if ((job as any).status !== 'canceled') await downloadSingle(win, job, it, settings)
+    job.itemCount++
+    job.totalBytes += size
+    batch.push(it)
+    queue.push(it.id)
+    maybeFlushBatch()
+  }
+
+  const walkDir = async (rootAbs: string, baseName: string) => {
+    const stack: Array<{ abs: string; rel: string }> = [{ abs: rootAbs, rel: '' }]
+    let ops = 0
+    while (stack.length) {
+      if ((job as any).status === 'canceled') return
+      const { abs, rel } = stack.pop()!
+      let entries: fs.Dirent[]
+      try { entries = await fs.promises.readdir(abs, { withFileTypes: true }) } catch { continue }
+      for (const de of entries) {
+        const childAbs = path.join(abs, de.name)
+        const childRel = rel ? path.posix.join(rel.replace(/\\/g, '/'), de.name) : de.name
+        if (de.isDirectory()) {
+          stack.push({ abs: childAbs, rel: childRel })
+        } else if (de.isFile()) {
+          let st: fs.Stats | undefined
+          try { st = await fs.promises.stat(childAbs) } catch {}
+          addFile(childAbs, path.posix.join(baseName, childRel), st?.size || 0)
+        }
+        ops++
+        if (ops >= 150) { // yield periodically
+          ops = 0
+          await new Promise(r => setTimeout(r, 0))
+          maybeFlushBatch()
+        }
       }
     }
-    run().then(() => {
-      active--
-      job.completedCount++
-      if (job.completedCount >= job.itemCount && job.status !== 'failed' && job.status !== 'canceled') {
-        job.status = 'completed'
-        emit(win, { type: 'job-state', job })
-        emit(win, { type: 'job-complete', jobId })
-      }
-      void next()
-    }).catch((e) => {
-      active--
-      it.status = 'failed'
-      it.error = (e as any)?.message || String(e)
-      job.status = 'failed'
-      emit(win, { type: 'item-state', jobId, item: it })
-      emit(win, { type: 'job-error', jobId, error: it.error! })
-      void next()
-    })
   }
-  // pump initial concurrency
-  const kicks = Math.min(settings.objectConcurrency, keys.length)
-  for (let i = 0; i < kicks; i++) void next()
+
+  // Kick off enumeration async (don't await full expansion before returning jobId)
+  ;(async () => {
+    try {
+      for (const f of params.files) {
+        const abs = f.path
+        if (!abs) continue
+        let st: fs.Stats | undefined
+        try { st = await fs.promises.stat(abs) } catch {}
+        const displayNameRaw = f.name || (abs ? path.basename(abs) : 'file')
+        const displayName = process.platform === 'win32' ? sanitizeWindows(displayNameRaw) : displayNameRaw
+        if (st?.isDirectory()) {
+          await walkDir(abs, displayName)
+        } else if (st?.isFile()) {
+          addFile(abs, displayName, st.size)
+        }
+        maybeFlushBatch()
+      }
+    } finally {
+      enumerationDone = true
+      maybeFlushBatch(true)
+      maybeFinish()
+    }
+  })().catch(e => {
+    job.status = 'failed'
+    job.error = (e as any)?.message || String(e)
+    emit(win, { type: 'job-state', job })
+    emit(win, { type: 'job-error', jobId, error: job.error! })
+  })
+
+  // Dispatcher timer to ensure periodic flush & dispatch even if batch threshold not met
+  const tick = () => {
+    if (job.status === 'failed' || job.status === 'canceled' || (enumerationDone && job.status === 'completed')) return
+    maybeFlushBatch()
+    maybeDispatch()
+    setTimeout(tick, 150)
+  }
+  setTimeout(tick, 150)
+
   return jobId
 }
 
 async function downloadSingle(win: BrowserWindow | null, job: TransferJob, it: TransferItem, settings: ReturnType<typeof applyDefaults>) {
-  if (job.status === 'queued') job.status = 'in-progress'
+  if (job.status === 'queued' || job.status === 'enumerating') job.status = 'in-progress'
   it.status = 'in-progress'
   it.startedAt = Date.now()
   emit(win, { type: 'job-state', job })
@@ -379,8 +503,8 @@ async function downloadSimple(win: BrowserWindow | null, job: TransferJob, it: T
       const { speedBps, etaSeconds } = speedEta(it.bytesTransferred, it.startedAt, it.size)
       it.speedBps = speedBps; it.etaSeconds = etaSeconds
       recalcJobProgress(job)
-      emit(win, { type: 'item-state', jobId: job.id, item: it })
-      emit(win, { type: 'job-state', job })
+      emitThrottled(win, { type: 'item-state', jobId: job.id, item: it })
+      emitThrottled(win, { type: 'job-state', job })
     })
     body.on('error', reject)
     ws.on('error', reject)
@@ -444,8 +568,8 @@ async function downloadMultipart(win: BrowserWindow | null, job: TransferJob, it
               // coarse updates; throttled via UI anyway
             }
             recalcJobProgress(job)
-            emit(win, { type: 'item-state', jobId: job.id, item: it })
-            emit(win, { type: 'job-state', job })
+            emitThrottled(win, { type: 'item-state', jobId: job.id, item: it })
+            emitThrottled(win, { type: 'job-state', job })
           })
           stream.pipe(writer)
         })
@@ -470,7 +594,23 @@ async function downloadMultipart(win: BrowserWindow | null, job: TransferJob, it
   try { await fs.promises.unlink(manifest) } catch {}
 }
 
-export function control(win: BrowserWindow | null, jobId: string, action: 'pause'|'resume'|'cancel'|'retry') {
+export function control(win: BrowserWindow | null, jobId: string, action: 'pause'|'resume'|'cancel'|'retry'|'cancelAll') {
+  if (action === 'cancelAll') {
+    for (const job of jobs.values()) {
+      if (job.status === 'completed' || job.status === 'failed' || job.status === 'canceled') continue
+      job.status = 'canceled'
+      for (const it of items.values()) {
+        if (it.jobId !== job.id) continue
+        if (['completed','failed','canceled'].includes(it.status)) continue
+        it.status = 'canceled'
+        const s = activeStreams.get(it.id)
+  try { (s as any)?.destroy?.(new Error('canceled')) } catch {}
+        emit(win, { type: 'item-state', jobId: job.id, item: it })
+      }
+      emit(win, { type: 'job-state', job })
+    }
+    return
+  }
   // For MVP, implement cancel with UI updates. Pausing would need stream abort controllers.
   const job = jobs.get(jobId)
   if (!job) throw new Error('Unknown job')
@@ -485,182 +625,6 @@ export function control(win: BrowserWindow | null, jobId: string, action: 'pause
     }
     emit(win, { type: 'job-state', job })
   }
-}
-
-export async function startUpload(win: BrowserWindow | null, params: StartUploadParams) {
-  const settings = applyDefaults(params.settings)
-  const prefix = params.prefix ? params.prefix.replace(/\/+/g, '/').replace(/^\//, '').replace(/\/?$/, '/') : ''
-  
-  // Expand any directories into individual files, preserving relative paths under the directory name
-  // This prevents EISDIR errors when a folder is dropped.
-  const expandDroppedFiles = async (files: Array<{ path: string; size: number; name?: string }>) => {
-    const expanded: Array<{ path: string; size: number; name: string }> = []
-    let sawDirectory = false
-    const walkDir = async (rootAbs: string, baseName: string) => {
-      // baseName is the container folder name to prefix to all relative entries
-      const stack: Array<{ abs: string; rel: string }> = [{ abs: rootAbs, rel: '' }]
-      while (stack.length) {
-        const { abs, rel } = stack.pop()!
-        let entries: fs.Dirent[]
-        try { entries = await fs.promises.readdir(abs, { withFileTypes: true }) } catch { continue }
-        for (const de of entries) {
-          const childAbs = path.join(abs, de.name)
-          const childRel = rel ? path.posix.join(rel.replace(/\\/g, '/'), de.name) : de.name
-          if (de.isDirectory()) {
-            stack.push({ abs: childAbs, rel: childRel })
-          } else if (de.isFile()) {
-            let st: fs.Stats | undefined
-            try { st = await fs.promises.stat(childAbs) } catch {}
-            const size = st?.size ?? 0
-            const name = path.posix.join(baseName, childRel)
-            expanded.push({ path: childAbs, size, name })
-          }
-        }
-      }
-    }
-    for (const f of files) {
-      const abs = f.path
-      const displayName = f.name || (abs ? path.basename(abs) : 'file')
-      if (!abs) {
-        // If path is missing we can't upload; skip it
-        continue
-      }
-      let st: fs.Stats | undefined
-      try { st = await fs.promises.stat(abs) } catch {}
-      if (st?.isDirectory()) {
-        sawDirectory = true
-        await walkDir(abs, displayName)
-      } else if (st?.isFile()) {
-        const size = st.size
-        expanded.push({ path: abs, size, name: displayName })
-      } else {
-        // Not a regular file (symlink, device, etc) -> skip
-      }
-    }
-    return { files: expanded, hadDirectory: sawDirectory }
-  }
-  
-  const { files: expandedFiles, hadDirectory } = await expandDroppedFiles(params.files)
-  if (expandedFiles.length === 0) {
-    throw new Error('No files to upload (empty folder or invalid items).')
-  }
-  
-  // For multiple files without a prefix, create individual object jobs instead of a single prefix job
-  // But if the multiple files came from a dropped folder (names contain '/'),
-  // keep them in a single job so the folder structure is preserved.
-  if (expandedFiles.length > 1 && !prefix && !hadDirectory && expandedFiles.every(f => !f.name.includes('/'))) {
-    const jobIds: string[] = []
-    for (const file of expandedFiles) {
-      const jobId = newId('job')
-      getLogger().debug('xfer', 'startUpload individual', { jobId, bucket: params.bucket, file: file.name })
-      const job: TransferJob = {
-        id: jobId,
-        type: 'object',
-        bucket: params.bucket,
-        prefix: '',
-        destDir: '',
-        status: 'queued',
-        totalBytes: file.size || 0,
-        completedBytes: 0,
-        itemCount: 1,
-        completedCount: 0,
-        settings
-      } as any
-      jobs.set(jobId, job)
-      emit(win, { type: 'job-state', job })
-      
-      const key = file.name || path.basename(file.path)
-      const it: TransferItem = { 
-        id: newId('item'), 
-        jobId, 
-        bucket: params.bucket, 
-        key, 
-        size: file.size || 0, 
-        destPath: file.path, 
-        status: 'queued', 
-        bytesTransferred: 0 
-      }
-      items.set(it.id, it)
-      emit(win, { type: 'item-state', jobId, item: it })
-      
-      // Start upload for this individual file
-      uploadOne(win, job, it, file.path, it.size, settings).then(() => {
-        job.completedCount = 1
-        job.status = 'completed'
-        emit(win, { type: 'job-state', job })
-        emit(win, { type: 'job-complete', jobId })
-      }).catch((e) => {
-        it.status = 'failed'
-        it.error = (e as any)?.message || String(e)
-        job.status = 'failed'
-        emit(win, { type: 'item-state', jobId, item: it })
-        emit(win, { type: 'job-error', jobId, error: it.error! })
-      })
-      
-      jobIds.push(jobId)
-    }
-    return jobIds[0] // Return first job ID for compatibility
-  }
-  
-  // Original logic for single files or files with a prefix
-  const jobId = newId('job')
-  getLogger().debug('xfer', 'startUpload', { jobId, bucket: params.bucket, prefix, files: expandedFiles.length })
-  
-  // Use 'object' type for single file uploads, 'prefix' for multiple files with prefix
-  const jobType = (expandedFiles.length === 1) ? 'object' : 'prefix'
-  
-  const job: TransferJob = {
-    id: jobId,
-    type: jobType,
-    bucket: params.bucket,
-    prefix,
-    destDir: '',
-    status: 'queued',
-    totalBytes: expandedFiles.reduce((a, f) => a + (f.size || 0), 0),
-    completedBytes: 0,
-    itemCount: expandedFiles.length,
-    completedCount: 0,
-    settings
-  } as any
-  jobs.set(jobId, job)
-  emit(win, { type: 'job-state', job })
-
-  let active = 0
-  let idx = 0
-  const next = async (): Promise<void> => {
-    if ((job as any).status === 'canceled') return
-    if (idx >= expandedFiles.length) return
-    while (active >= settings.objectConcurrency) await new Promise(r => setTimeout(r, 20))
-    const f = expandedFiles[idx++]
-    active++
-    getLogger().trace('xfer', 'upload next', { jobId, path: f.path, size: f.size })
-    const key = prefix + (f.name || path.basename(f.path))
-    const it: TransferItem = { id: newId('item'), jobId, bucket: params.bucket, key, size: f.size || 0, destPath: f.path, status: 'queued', bytesTransferred: 0 }
-    items.set(it.id, it)
-    emit(win, { type: 'item-state', jobId, item: it })
-    uploadOne(win, job, it, f.path, it.size, settings).then(() => {
-      active--
-      job.completedCount++
-      if (job.completedCount >= job.itemCount && job.status !== 'failed' && job.status !== 'canceled') {
-        job.status = 'completed'
-        emit(win, { type: 'job-state', job })
-        emit(win, { type: 'job-complete', jobId })
-      }
-      void next()
-    }).catch((e) => {
-      active--
-      it.status = 'failed'
-      it.error = (e as any)?.message || String(e)
-      getLogger().warn('xfer', 'upload error', { jobId, key: it.key, error: it.error })
-      job.status = 'failed'
-      emit(win, { type: 'item-state', jobId, item: it })
-      emit(win, { type: 'job-error', jobId, error: it.error! })
-      void next()
-    })
-  }
-  const kicks = Math.min(settings.objectConcurrency, expandedFiles.length)
-  for (let i = 0; i < kicks; i++) void next()
-  return jobId
 }
 
 async function uploadOne(win: BrowserWindow | null, job: TransferJob, it: TransferItem, filePath: string, size: number, settings: ReturnType<typeof applyDefaults>) {

@@ -148,6 +148,7 @@ export default function TransferQueue() {
       <div className="flex items-center mb-2">
         <div className="font-semibold">Transfer Queue</div>
         <div className="ml-auto flex items-center gap-2">
+          <button className="btn btn-secondary text-xs" title="Cancel all active/queued" onClick={() => (window as any).api.transfers.control({ jobId: '*', action: 'cancelAll' })}>Cancel All</button>
           <button className="btn btn-secondary text-xs" title="Clear finished (completed/failed/canceled)" onClick={clearFinished}>Clear finished</button>
         </div>
       </div>
