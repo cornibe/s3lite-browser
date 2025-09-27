@@ -1,6 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import * as s3 from './s3'
-import * as transfers from './transfers'
+import { startObject as startObjectTransfer, startPrefix as startPrefixTransfer, startUpload as startUploadTransfer, control as controlTransfer } from './transfers'
 import { IpcChannels, ExtraIpcChannels } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -289,7 +289,7 @@ export function registerIpc() {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const t = Date.now()
     try {
-      const jobId = await transfers.startObject(win, params)
+  const jobId = await startObjectTransfer(win, params)
       getLogger().info('xfer', 'start object', { durationMs: Date.now() - t, jobId, bucket: params.bucket, key: params.key })
   try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadObject', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t, extra: { jobId } })) } catch {}
       return { ok: true as const, jobId }
@@ -305,7 +305,7 @@ export function registerIpc() {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const t = Date.now()
     try {
-      const jobId = await transfers.startPrefix(win, params)
+  const jobId = await startPrefixTransfer(win, params)
       getLogger().info('xfer', 'start prefix', { durationMs: Date.now() - t, jobId, bucket: params.bucket, prefix: params.prefix })
   try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadPrefix', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t, extra: { jobId } })) } catch {}
       return { ok: true as const, jobId }
@@ -321,7 +321,7 @@ export function registerIpc() {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const t = Date.now()
     try {
-      const jobId = await transfers.startUpload(win, params)
+  const jobId = await startUploadTransfer(win, params)
       getLogger().info('xfer', 'start upload', { durationMs: Date.now() - t, jobId, bucket: params.bucket, files: params.files?.length || 0 })
   try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'Upload', bucket: params.bucket, status: 'ok', durationMs: Date.now() - t, extra: { jobId, files: params.files?.length || 0 } })) } catch {}
       return { ok: true as const, jobId }
@@ -336,7 +336,7 @@ export function registerIpc() {
   ipcMain.handle(IpcChannels.XFER_CONTROL, async (e, params) => {
     try {
       const win = BrowserWindow.fromWebContents(e.sender)!
-      const result = transfers.control(win, params.jobId, params.action)
+  const result = controlTransfer(win, params.jobId, params.action)
       getLogger().debug('xfer', 'control', { jobId: params.jobId, action: params.action })
       return { ok: true as const, result }
     } catch (err) {

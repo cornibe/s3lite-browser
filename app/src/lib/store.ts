@@ -377,9 +377,86 @@ export const useStore = create<State & Actions>((set, get) => {
   }
 })
 
-// Global, throttled transfer event router: route events to correct tab by jobId
+// Global, batched transfer event router: route events to correct tab and reduce UI churn for large queues
 ;(function initTransferRouting() {
   let initialized = false
+  // Pending buffers per tab; flushed on a timer
+  const pending: Record<string, { jobs: Record<string, TransferJob>; items: Record<string, TransferItem & { addedAt?: number }> }> = {}
+  let flushTimer: number | undefined
+  const FLUSH_MS = 150
+  const MAX_ITEMS_PER_TAB = 5000
+
+  function queueFlush() {
+    if (flushTimer) return
+    try { flushTimer = window.setTimeout(flush, FLUSH_MS) as unknown as number } catch { flushTimer = undefined as any }
+  }
+
+  function markAddedAt<T extends TransferItem>(it: T): T & { addedAt?: number } {
+    const v: any = { ...it }
+    if (v.addedAt == null) v.addedAt = Date.now()
+    const total = v.size || 0
+    const clamped = Math.min(Math.max(0, v.bytesTransferred || 0), total)
+    v.bytesTransferred = v.status === 'completed' ? total : clamped
+    return v
+  }
+
+  function flush() {
+    flushTimer = undefined
+    const tabsToApply = Object.keys(pending)
+    if (tabsToApply.length === 0) return
+    useStore.setState(ss => {
+      const nextTabs = { ...ss.tabs }
+      for (const tabId of tabsToApply) {
+        const buf = pending[tabId]
+        if (!buf) continue
+        delete pending[tabId]
+        const t = ss.tabs[tabId]
+        if (!t) continue
+        // Mutate transfers in place to avoid copying huge maps every tick
+        const transfers = t.transfers
+        // Jobs: assign/overwrite
+        for (const jid of Object.keys(buf.jobs)) {
+          transfers.jobs[jid] = buf.jobs[jid]
+        }
+        // Items: assign/overwrite
+        for (const iid of Object.keys(buf.items)) {
+          transfers.items[iid] = buf.items[iid]
+        }
+        // Enforce cap: drop oldest queued items first, then terminal, keep in-progress/paused
+        let count = Object.keys(transfers.items).length
+        if (count > MAX_ITEMS_PER_TAB) {
+          const queued: Array<TransferItem & { addedAt?: number }> = []
+          const terminal: Array<TransferItem & { addedAt?: number }> = []
+          for (const it of Object.values(transfers.items)) {
+            if (it.status === 'queued') queued.push(it as any)
+            else if (it.status === 'completed' || it.status === 'failed' || it.status === 'canceled') terminal.push(it as any)
+          }
+          const byAge = (a: any, b: any) => (a.addedAt || 0) - (b.addedAt || 0)
+          queued.sort(byAge)
+          terminal.sort(byAge)
+          let removed = 0
+          for (const list of [queued, terminal]) {
+            for (const it of list) {
+              if (count <= MAX_ITEMS_PER_TAB) break
+              delete (transfers.items as any)[it.id]
+              count--; removed++
+            }
+            if (count <= MAX_ITEMS_PER_TAB) break
+          }
+          debug('ui', 'xfer router cap applied', { tabId, removed, kept: count, max: MAX_ITEMS_PER_TAB })
+        }
+        // Touch tabs map to signal change
+        nextTabs[tabId] = { ...t, transfers }
+        if (tabId === ss.activeTabId) {
+          // Mirror for active tab
+          ;(ss as any).transfers = transfers
+        }
+        debug('ui', 'xfer router flush', { tabId, jobs: Object.keys(buf.jobs).length, items: Object.keys(buf.items).length, totalItems: Object.keys(transfers.items).length })
+      }
+      return { tabs: nextTabs }
+    })
+  }
+
   return () => {
     if (initialized) return
     initialized = true
@@ -387,36 +464,24 @@ export const useStore = create<State & Actions>((set, get) => {
       ;(window as any).api.transfers.onEvent((evt: TransferEvent) => {
         const s = useStore.getState()
         const jobId = evt.type === 'job-state' ? evt.job.id : (evt as any).jobId
-        const tabId = s.jobTab[jobId] || s.activeTabId // fallback to active
-        const tab = s.tabs[tabId]
-        if (!tab) return
-        const jobs = { ...tab.transfers.jobs }
-        const items = { ...tab.transfers.items }
+        const tabId = s.jobTab[jobId] || s.activeTabId
+        if (!tabId) return
+        const buf = (pending[tabId] ||= { jobs: {}, items: {} })
         if (evt.type === 'job-state') {
-          jobs[evt.job.id] = evt.job
+          buf.jobs[evt.job.id] = evt.job
         } else if (evt.type === 'item-state') {
-          const it = evt.item
-          const total = it.size || 0
-          const clamped = Math.min(Math.max(0, it.bytesTransferred || 0), total)
-          const finalBytes = it.status === 'completed' ? total : clamped
-          items[it.id] = { ...it, bytesTransferred: finalBytes }
+          const it = markAddedAt(evt.item as any)
+          // If the parent job is canceled, skip noisy updates
+          const job = buf.jobs[it.jobId] || s.tabs[tabId]?.transfers.jobs[it.jobId]
+          if (job && job.status === 'canceled') return
+          buf.items[it.id] = it
         } else if (evt.type === 'items-added') {
-          for (const it of evt.items) {
-            const total = it.size || 0
-            const clamped = Math.min(Math.max(0, it.bytesTransferred || 0), total)
-            const finalBytes = it.status === 'completed' ? total : clamped
-            items[it.id] = { ...it, bytesTransferred: finalBytes }
+          for (const it0 of evt.items) {
+            const it = markAddedAt(it0 as any)
+            buf.items[it.id] = it
           }
         }
-        const transfers = { jobs, items }
-        // commit back to tab
-        useStore.setState(ss => {
-          const t = ss.tabs[tabId]
-          const nextTabs = { ...ss.tabs, [tabId]: { ...t, transfers } }
-          const patch: any = { tabs: nextTabs }
-          if (tabId === ss.activeTabId) patch.transfers = transfers
-          return patch
-        })
+        queueFlush()
       })
     } catch {}
   }

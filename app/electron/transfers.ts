@@ -336,6 +336,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
   let batch: TransferItem[] = []
 
   const maybeDispatch = () => {
+  getLogger().trace('xfer', 'maybeDispatch enter', { active, queued: queue.length })
     while (active < settings.objectConcurrency && queue.length) {
       const itemId = queue.shift()!
       const it = items.get(itemId)
@@ -347,7 +348,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
         job.status = 'in-progress'
         emitThrottled(win, { type: 'job-state', job })
       }
-      uploadOne(win, job, it, it.destPath, it.size, settings).then(() => {
+  uploadOne(win, job, it, it.destPath, it.size, settings).then(() => {
         active--
         job.completedCount++
         maybeFinish()
@@ -368,6 +369,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
     const now = Date.now()
     if (!force && batch.length < BATCH_SIZE && (now - lastBatchEmit) < BATCH_INTERVAL_MS) return
     if (!batch.length) return
+    getLogger().debug('xfer', 'emit items-added batch', { count: batch.length, queued: queue.length })
     emit(win, { type: 'items-added', jobId, items: batch.map(b => ({ ...b })) })
     // Update job state (counts / total) after batch emission
     emitThrottled(win, { type: 'job-state', job })
@@ -417,7 +419,7 @@ export async function startUpload(win: BrowserWindow | null, params: StartUpload
           addFile(childAbs, path.posix.join(baseName, childRel), st?.size || 0)
         }
         ops++
-        if (ops >= 150) { // yield periodically
+  if (ops >= 150) { // yield periodically
           ops = 0
           await new Promise(r => setTimeout(r, 0))
           maybeFlushBatch()
@@ -596,19 +598,24 @@ async function downloadMultipart(win: BrowserWindow | null, job: TransferJob, it
 
 export function control(win: BrowserWindow | null, jobId: string, action: 'pause'|'resume'|'cancel'|'retry'|'cancelAll') {
   if (action === 'cancelAll') {
+    let affectedJobs = 0
+    let affectedItems = 0
     for (const job of jobs.values()) {
       if (job.status === 'completed' || job.status === 'failed' || job.status === 'canceled') continue
       job.status = 'canceled'
+      affectedJobs++
       for (const it of items.values()) {
         if (it.jobId !== job.id) continue
         if (['completed','failed','canceled'].includes(it.status)) continue
         it.status = 'canceled'
+        affectedItems++
         const s = activeStreams.get(it.id)
-  try { (s as any)?.destroy?.(new Error('canceled')) } catch {}
-        emit(win, { type: 'item-state', jobId: job.id, item: it })
+        try { (s as any)?.destroy?.(new Error('canceled')) } catch {}
+        // Avoid emitting per-item updates for cancelAll to reduce UI churn
       }
       emit(win, { type: 'job-state', job })
     }
+    getLogger().debug('xfer', 'cancelAll applied', { jobs: affectedJobs, items: affectedItems })
     return
   }
   // For MVP, implement cancel with UI updates. Pausing would need stream abort controllers.
