@@ -732,3 +732,5 @@ async function uploadMultipart(win: BrowserWindow | null, job: TransferJob, it: 
   await c.send(new CompleteMultipartUploadCommand({ Bucket: it.bucket, Key: it.key, UploadId: man.uploadId, MultipartUpload: { Parts: man.parts.map(p => ({ PartNumber: p.partNumber, ETag: (p as any).etag })) } }))
   try { await fs.promises.unlink(manPath) } catch {}
 }
+
+
