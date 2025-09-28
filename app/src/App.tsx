@@ -4,6 +4,8 @@ import TabBar from './components/TabBar'
 import SidebarBuckets from './components/SidebarBuckets'
 import ObjectExplorer from './components/ObjectExplorer'
 import BottomPanel from './components/BottomPanel'
+import BottomTaskbar from './components/BottomTaskbar'
+import EnumerationModal from './components/EnumerationModal'
 import SettingsModal from './components/SettingsModal'
 import { useStore } from './lib/store'
 import { createPortal } from 'react-dom'
@@ -110,10 +112,14 @@ export default function App() {
             <path d="M4 10h16v2H4v-2zm0 4h16v2H4v-2z" />
           </svg>
         </button>
-        <div style={{ height: queueHeight }} className="flex-none overflow-hidden">
+  <div style={{ height: queueHeight }} className="flex-none overflow-hidden">
           <BottomPanel />
         </div>
+  {/* Bottom task bar with live counts */}
+  <BottomTaskbar />
         <SettingsModal />
+  {/* Enumeration modal for large folder uploads */}
+  <EnumerationModal />
         {toast && createPortal(
           <div className="fixed top-3 right-3 z-[9999] pointer-events-none">
             <div className={`${toast.type === 'error' ? 'alert alert-error' : toast.type === 'success' ? 'alert alert-success' : 'menu-bg border border-default'} px-3 py-2 rounded text-sm shadow`}>{toast.message}</div>

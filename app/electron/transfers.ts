@@ -611,7 +611,8 @@ export function control(win: BrowserWindow | null, jobId: string, action: 'pause
         affectedItems++
         const s = activeStreams.get(it.id)
         try { (s as any)?.destroy?.(new Error('canceled')) } catch {}
-        // Avoid emitting per-item updates for cancelAll to reduce UI churn
+  // Emit per-item updates so the renderer can clear them
+  emit(win, { type: 'item-state', jobId: job.id, item: it })
       }
       emit(win, { type: 'job-state', job })
     }
