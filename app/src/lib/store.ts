@@ -309,6 +309,11 @@ export const useStore = create<State & Actions>((set, get) => {
     setTransfers: (transfers) => set(s => {
       const id = s.activeTabId
       const prevTab = s.tabs[id]
+      // Derive cleared ids by comparing previous items with new items
+      const prevIds = prevTab?.transfers?.items ? new Set(Object.keys(prevTab.transfers.items)) : new Set<string>()
+      const nextIds = new Set(Object.keys(transfers.items))
+      const clearedIds: string[] = []
+      for (const pid of prevIds) if (!nextIds.has(pid)) clearedIds.push(pid)
       const tab = { ...prevTab, transfers }
       const tabs = { ...s.tabs, [id]: tab }
       // Recompute live counters from provided items; preserve lifetime completed
@@ -321,14 +326,16 @@ export const useStore = create<State & Actions>((set, get) => {
       tab.transferStats = stats
       // Clear any pending router updates for this tab to avoid conflicts
       if (typeof window !== 'undefined' && (window as any).__clearPendingTransferUpdates) {
-        (window as any).__clearPendingTransferUpdates(id)
+        (window as any).__clearPendingTransferUpdates(id, clearedIds)
       }
       // Force immediate state update by using fresh object references
       const freshTransfers = { jobs: { ...transfers.jobs }, items: { ...transfers.items } }
       const freshStats = { ...stats }
       const freshTab = { ...tab, transfers: freshTransfers, transferStats: freshStats }
       const freshTabs = { ...tabs, [id]: freshTab }
-      return { tabs: freshTabs, transfers: freshTransfers, transferStats: freshStats } as any
+  // Immediately flush any pending router updates to avoid perceived lag after Clear Finished
+  try { (window as any).__flushTransferUpdates?.() } catch {}
+  return { tabs: freshTabs, transfers: freshTransfers, transferStats: freshStats } as any
     }),
     registerJobForActiveTab: (jobId) => set(s => ({ jobTab: { ...s.jobTab, [jobId]: s.activeTabId } })),
 
@@ -418,11 +425,28 @@ export const useStore = create<State & Actions>((set, get) => {
   let flushTimer: number | undefined
   const FLUSH_MS = 50
   const MAX_ITEMS_PER_TAB = 5000
+  // Track recently-cleared terminal items to prevent resurrection; expire after a short TTL
+  const recentlyCleared: Record<string, Map<string, number>> = {}
+  const CLEARED_TTL_MS = 10_000
 
   // Expose function to clear pending updates for a specific tab (used by setTransfers)
   if (typeof window !== 'undefined') {
-    (window as any).__clearPendingTransferUpdates = (tabId: string) => {
+    (window as any).__clearPendingTransferUpdates = (tabId: string, clearedIds?: string[]) => {
       delete pending[tabId]
+      if (clearedIds && clearedIds.length) {
+        const now = Date.now()
+        const m = (recentlyCleared[tabId] ||= new Map<string, number>())
+        for (const id of clearedIds) m.set(id, now)
+      }
+    }
+    ;(window as any).__flushTransferUpdates = () => {
+      try {
+        if (flushTimer) {
+          window.clearTimeout(flushTimer as any)
+          flushTimer = undefined as any
+        }
+      } catch {}
+      try { flush() } catch {}
     }
   }
 
@@ -446,6 +470,7 @@ export const useStore = create<State & Actions>((set, get) => {
     flushTimer = undefined
     const tabsToApply = Object.keys(pending)
     if (tabsToApply.length === 0) return
+    const APPLY_LIMIT = 5000 // apply at most this many item updates per tab per flush to reduce jank
     useStore.setState(ss => {
       const nextTabs = { ...ss.tabs }
       let activeMirrorTransfers: TabState['transfers'] | undefined
@@ -453,7 +478,6 @@ export const useStore = create<State & Actions>((set, get) => {
       for (const tabId of tabsToApply) {
         const buf = pending[tabId]
         if (!buf) continue
-        delete pending[tabId]
         const t = ss.tabs[tabId]
         if (!t) continue
         
@@ -464,12 +488,33 @@ export const useStore = create<State & Actions>((set, get) => {
         }
         const newStats = { ...t.transferStats }
         
-        // Jobs: assign/overwrite
-        for (const jid of Object.keys(buf.jobs)) {
+        // Jobs: assign/overwrite (apply all)
+        const jobIds = Object.keys(buf.jobs)
+        for (const jid of jobIds) {
           newTransfers.jobs[jid] = buf.jobs[jid]
+          delete buf.jobs[jid]
         }
-        // Items: assign/overwrite
-        for (const iid of Object.keys(buf.items)) {
+        // Snapshot canceled job ids after applying job updates
+        const canceledJobIds = new Set(Object.values(newTransfers.jobs).filter(j => j.status === 'canceled').map(j => j.id))
+        // Items: assign/overwrite with per-flush cap to reduce main-thread blocking
+        let itemIds = Object.keys(buf.items)
+        // Filter out late updates for items the user just cleared (within TTL)
+        const rc = recentlyCleared[tabId]
+        if (rc && rc.size) {
+          const now = Date.now()
+          // purge expired
+          for (const [k, ts] of Array.from(rc.entries())) { if (now - ts > CLEARED_TTL_MS) rc.delete(k) }
+          if (rc.size) itemIds = itemIds.filter(id => !rc.has(id))
+        }
+        if (itemIds.length > APPLY_LIMIT) {
+          // Prefer the newest updates to converge faster on terminal states
+          itemIds = itemIds
+            .map(id => [id, (buf.items[id] as any)?.addedAt || 0] as [string, number])
+            .sort((a, b) => a[1] - b[1]) // oldest -> newest
+            .slice(-APPLY_LIMIT)
+            .map(([id]) => id)
+        }
+        for (const iid of itemIds) {
           const incoming: any = buf.items[iid]
           const prev = newTransfers.items[iid] as (TransferItem & { _countedCompleted?: boolean }) | undefined
           // increment lifetime completed once when transitioning to completed
@@ -480,9 +525,22 @@ export const useStore = create<State & Actions>((set, get) => {
             incoming._countedCompleted = true
           }
           newTransfers.items[iid] = incoming
+          // remove from buffer (others remain for next flush)
+          delete buf.items[iid]
         }
-        // Recompute active/queued from current map for live accuracy
+        // Recompute active/queued from current map for live accuracy.
+        // If a job is canceled, proactively mark its non-terminal items as canceled to avoid "stuck" entries.
         let active = 0, queued = 0
+        if (canceledJobIds.size > 0) {
+          for (const [iid, it0] of Object.entries(newTransfers.items)) {
+            const it = it0 as TransferItem & { addedAt?: number; _countedCompleted?: boolean }
+            const isTerminal = it.status === 'completed' || it.status === 'failed' || it.status === 'canceled'
+            if (!isTerminal && canceledJobIds.has(it.jobId)) {
+              // immutably replace to ensure React sees the change
+              newTransfers.items[iid] = { ...it, status: 'canceled' }
+            }
+          }
+        }
         for (const it of Object.values(newTransfers.items)) {
           if (it.status === 'in-progress') active++
           else if (it.status === 'queued' || it.status === 'paused') queued++
@@ -527,13 +585,16 @@ export const useStore = create<State & Actions>((set, get) => {
           activeMirrorTransfers = newTransfers
           activeMirrorStats = newStats
         }
-        debug('ui', 'xfer router flush', { tabId, jobs: Object.keys(buf.jobs).length, items: Object.keys(buf.items).length, totalItems: Object.keys(newTransfers.items).length, active: newStats.active, queued: newStats.queued })
+    debug('ui', 'xfer router flush', { tabId, jobsApplied: jobIds.length, itemsApplied: itemIds.length, bufJobsLeft: Object.keys(buf.jobs).length, bufItemsLeft: Object.keys(buf.items).length, totalItems: Object.keys(newTransfers.items).length, active: newStats.active, queued: newStats.queued })
       }
       const patch: any = { tabs: nextTabs }
       if (activeMirrorTransfers) patch.transfers = activeMirrorTransfers
       if (activeMirrorStats) patch.transferStats = activeMirrorStats
       return patch
     })
+  // If buffers remain (due to APPLY_LIMIT), schedule another quick flush
+  const hasPendingLeft = Object.values(pending).some(b => b && (Object.keys(b.jobs).length > 0 || Object.keys(b.items).length > 0))
+  if (hasPendingLeft) queueFlush()
   }
 
   return () => {
@@ -550,14 +611,24 @@ export const useStore = create<State & Actions>((set, get) => {
           buf.jobs[evt.job.id] = evt.job
         } else if (evt.type === 'item-state') {
           const it = markAddedAt(evt.item as any)
-          // If the parent job is canceled, skip noisy updates
+          // If the parent job is canceled, allow only terminalization updates; drop non-terminal noise
           const job = buf.jobs[it.jobId] || s.tabs[tabId]?.transfers.jobs[it.jobId]
-          if (job && job.status === 'canceled') return
+          if (job && job.status === 'canceled') {
+            if (it.status !== 'canceled' && it.status !== 'completed' && it.status !== 'failed') {
+              return
+            }
+          }
           buf.items[it.id] = it
         } else if (evt.type === 'items-added') {
-          for (const it0 of evt.items) {
-            const it = markAddedAt(it0 as any)
-            buf.items[it.id] = it
+          const jid = (evt as any).jobId
+          const job = buf.jobs[jid] || s.tabs[tabId]?.transfers.jobs[jid]
+          if (job && job.status === 'canceled') {
+            // Ignore late arrivals for canceled job
+          } else {
+            for (const it0 of evt.items) {
+              const it = markAddedAt(it0 as any)
+              buf.items[it.id] = it
+            }
           }
         }
         queueFlush()
