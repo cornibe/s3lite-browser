@@ -20,10 +20,24 @@ window.addEventListener('unhandledrejection', (e) => { error('error', 'renderer 
 
 info('init', 'renderer starting')
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const rootEl = document.getElementById('root')!
+ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
     </QueryClientProvider>
   </React.StrictMode>
 )
+
+// Hide splash after mount with a quick fade-out
+try {
+  const splash = document.getElementById('splash')
+  if (splash) {
+    // Use next frame to ensure mount is committed
+    requestAnimationFrame(() => {
+      splash.classList.add('hide')
+      // Remove from DOM after transition
+      setTimeout(() => splash.remove(), 300)
+    })
+  }
+} catch {}
