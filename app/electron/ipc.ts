@@ -1,7 +1,9 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import * as s3 from './s3'
-import * as transfers from './transfers'
-import { IpcChannels } from './types'
+import { startObject as startObjectTransfer, startPrefix as startPrefixTransfer, startUpload as startUploadTransfer, control as controlTransfer } from './transfers'
+import { IpcChannels, ExtraIpcChannels } from './types'
+import * as fs from 'fs'
+import * as path from 'path'
 import { getLogger, safeMeta, redact } from './log'
 
 export function registerIpc() {
@@ -245,12 +247,49 @@ export function registerIpc() {
   ipcMain.handle(IpcChannels.LOG_SET_CONSOLE_LEVEL, async (_e, level: string) => { const l = (level || '').toUpperCase() as any; if (LEVELS.includes(l)) getLogger().setConsoleLevel(l); return { level: getLogger().getConsoleLevel() } })
   ipcMain.handle(IpcChannels.LOG_OPEN_DIR, async () => { await getLogger().openLogsFolder(); return { ok: true as const } })
 
+  // Export object list to CSV
+  ipcMain.handle(ExtraIpcChannels.UI_EXPORT_OBJECT_LIST, async (e, params: { defaultPath?: string; rows: Array<Record<string, any>> }) => {
+    const win = BrowserWindow.fromWebContents(e.sender)!
+    try {
+      const res = await dialog.showSaveDialog(win, {
+        title: 'Save object list',
+        defaultPath: params.defaultPath || 'objects.csv',
+        filters: [{ name: 'CSV', extensions: ['csv'] }]
+      })
+      if (res.canceled || !res.filePath) return { ok: false as const, canceled: true }
+      const filePath = res.filePath
+      // Build CSV (simple RFC4180-ish escaping of quotes)
+      if (!params.rows || params.rows.length === 0) {
+        fs.writeFileSync(filePath, '')
+        return { ok: true as const, filePath, rows: 0 }
+      }
+      const headers = Object.keys(params.rows[0])
+      const escape = (v: any) => {
+        if (v === null || v === undefined) return ''
+        const s = String(v)
+        if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+        return s
+      }
+      const lines: string[] = []
+      lines.push(headers.map(escape).join(','))
+      for (const row of params.rows) {
+        lines.push(headers.map(h => escape(row[h])).join(','))
+      }
+      fs.writeFileSync(filePath, lines.join('\n'))
+      return { ok: true as const, filePath, rows: params.rows.length }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to export CSV'
+      getLogger().warn('ipc', 'exportObjectList error', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
   // Transfer handlers
   ipcMain.handle(IpcChannels.XFER_START_OBJECT, async (e, params) => {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const t = Date.now()
     try {
-      const jobId = await transfers.startObject(win, params)
+  const jobId = await startObjectTransfer(win, params)
       getLogger().info('xfer', 'start object', { durationMs: Date.now() - t, jobId, bucket: params.bucket, key: params.key })
   try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadObject', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t, extra: { jobId } })) } catch {}
       return { ok: true as const, jobId }
@@ -266,7 +305,7 @@ export function registerIpc() {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const t = Date.now()
     try {
-      const jobId = await transfers.startPrefix(win, params)
+  const jobId = await startPrefixTransfer(win, params)
       getLogger().info('xfer', 'start prefix', { durationMs: Date.now() - t, jobId, bucket: params.bucket, prefix: params.prefix })
   try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'DownloadPrefix', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t, extra: { jobId } })) } catch {}
       return { ok: true as const, jobId }
@@ -282,7 +321,7 @@ export function registerIpc() {
     const win = BrowserWindow.fromWebContents(e.sender)!
     const t = Date.now()
     try {
-      const jobId = await transfers.startUpload(win, params)
+  const jobId = await startUploadTransfer(win, params)
       getLogger().info('xfer', 'start upload', { durationMs: Date.now() - t, jobId, bucket: params.bucket, files: params.files?.length || 0 })
   try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 'xfer', action: 'Upload', bucket: params.bucket, status: 'ok', durationMs: Date.now() - t, extra: { jobId, files: params.files?.length || 0 } })) } catch {}
       return { ok: true as const, jobId }
@@ -297,7 +336,7 @@ export function registerIpc() {
   ipcMain.handle(IpcChannels.XFER_CONTROL, async (e, params) => {
     try {
       const win = BrowserWindow.fromWebContents(e.sender)!
-      const result = transfers.control(win, params.jobId, params.action)
+  const result = controlTransfer(win, params.jobId, params.action)
       getLogger().debug('xfer', 'control', { jobId: params.jobId, action: params.action })
       return { ok: true as const, result }
     } catch (err) {
