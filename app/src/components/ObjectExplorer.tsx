@@ -121,6 +121,73 @@ function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
 export default function ObjectExplorer() {
   const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab, showToast, selectBucket, settings, setSettings } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
+  // Auto-pagination progress modal state
+  const [showFetchProgress, setShowFetchProgress] = useState(false)
+  const autoLoadingRef = useRef(false)
+  const abortAutoLoadRef = useRef(false)
+  const dataRef = useRef(data)
+  const hasNextPageRef = useRef(hasNextPage)
+  useEffect(() => { dataRef.current = data }, [data])
+  useEffect(() => { hasNextPageRef.current = hasNextPage ?? false }, [hasNextPage])
+
+  // Reset auto-load flags when location changes
+  useEffect(() => {
+    autoLoadingRef.current = false
+    abortAutoLoadRef.current = false
+    setShowFetchProgress(false)
+  }, [bucket, prefix])
+
+  // Start auto-fetching pages when many pages exist; show progress modal with Abort
+  useEffect(() => {
+    // Only when we have at least one page and there's more to load
+    const pages = data?.pages?.length ?? 0
+    if (!bucket || isLoading || pages === 0) return
+    if (!hasNextPage) return
+    if (abortAutoLoadRef.current) return
+    if (autoLoadingRef.current) return
+
+    autoLoadingRef.current = true
+    abortAutoLoadRef.current = false
+    setShowFetchProgress(false)
+
+    let canceled = false
+    const run = async () => {
+      try {
+        // Small yield to let modal paint before heavy paging
+        await new Promise(r => setTimeout(r, 0))
+        // Keep fetching until no next page or aborted
+        // Guard against rapid state changes by reading refs
+        while (!abortAutoLoadRef.current && hasNextPageRef.current && !canceled) {
+          try {
+            await fetchNextPage()
+          } catch (e) {
+            // Stop on error; modal will close and user can retry
+            break
+          }
+          // Allow UI to update between pages
+          await new Promise(r => setTimeout(r, 0))
+        }
+      } finally {
+        setShowFetchProgress(false)
+        autoLoadingRef.current = false
+      }
+    }
+    run()
+    return () => { canceled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucket, prefix, hasNextPage, isLoading, data])
+
+  // Only show the progress modal after more than 5 pages have been loaded
+  useEffect(() => {
+    const pages = data?.pages?.length ?? 0
+    if (autoLoadingRef.current && !abortAutoLoadRef.current && pages > 2 && (hasNextPageRef.current || isFetchingNextPage)) {
+      setShowFetchProgress(true)
+    }
+    // Hide when no more pages or aborted
+    if (!hasNextPageRef.current || abortAutoLoadRef.current) {
+      setShowFetchProgress(false)
+    }
+  }, [data, isFetchingNextPage])
   const listRef = useRef(null as any)
   const contentRef = useRef(null as any)
   const lastDragPointRef = useRef(null as any)
@@ -280,6 +347,14 @@ export default function ObjectExplorer() {
       for (const o of page.objects) entries.push({ type: 'object', data: o })
     }
     return entries
+  }, [data])
+  // Progress metrics derived from loaded data
+  const totalPagesLoaded = (data?.pages?.length ?? 0)
+  const totalObjectsLoaded = useMemo(() => {
+    const pages = data?.pages ?? []
+    let cnt = 0
+    for (const p of pages) cnt += (p.objects?.length ?? 0)
+    return cnt
   }, [data])
   // Keep itemsRef in sync for global drop handler
   useEffect(() => { itemsRef.current = items }, [items])
@@ -1467,6 +1542,29 @@ export default function ObjectExplorer() {
           return it ? [it] as any : []
         })()}
       />
+
+      {/* Auto-fetch progress modal */}
+      {showFetchProgress && (
+        createPortal(
+      <div className="fixed inset-0 z-[9998]">
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] max-w-[95vw] rounded menu-bg border border-default shadow p-4">
+        <div className="font-semibold mb-2">Fetching objects...</div>
+        <div className="text-sm opacity-80 mb-3">Total Pages: {totalPagesLoaded.toLocaleString()}   Total objects: {totalObjectsLoaded.toLocaleString()}</div>
+              <div className="flex items-center justify-end gap-2 mt-4">
+                <button
+                  className="btn text-xs cursor-pointer"
+                  style={{ backgroundColor: 'rgba(220,38,38,0.12)', color: 'var(--color-fg)' }}
+                  onClick={() => { abortAutoLoadRef.current = true; setShowFetchProgress(false) }}
+                >
+                  Abort
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      )}
     </div>
   )
 }

@@ -51,14 +51,20 @@ export default function BottomPanel() {
 }
 
 function PropertiesPanel() {
-  const { bucket, selectedKey, selectedType, selectedDetails } = useStore() as any
-  if (!selectedKey || !selectedType) {
-    return <div className="px-3 py-2 text-sm opacity-70">Select an object or folder to see details.</div>
+  const { bucket, prefix, selectedKey, selectedType, selectedDetails } = useStore() as any
+  // If no bucket, we cannot show location properties
+  if (!bucket) {
+    return <div className="px-3 py-2 text-sm opacity-70">Select a bucket to see details.</div>
   }
-  if (selectedType === 'folder') {
+  // If a folder or object is selected, show its details
+  if (selectedKey && selectedType === 'folder') {
     return <FolderPropsTables prefix={selectedKey} />
   }
-  return <ObjectPropsTables bucket={bucket} keyStr={selectedKey} details={selectedDetails?.type === 'object' ? selectedDetails.object : undefined} />
+  if (selectedKey && selectedType === 'object') {
+    return <ObjectPropsTables bucket={bucket} keyStr={selectedKey} details={selectedDetails?.type === 'object' ? selectedDetails.object : undefined} />
+  }
+  // Otherwise, default to current folder (or root bucket)
+  return <FolderPropsTables prefix={prefix || ''} />
 }
 
 function TransfersPanel() {
@@ -384,7 +390,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
   const abortRef = React.useRef(false)
 
   const s3Uri = bucket ? `s3://${bucket}/${prefix}` : ''
-  const name = React.useMemo(() => prefix, [prefix])
+  const name = React.useMemo(() => prefix || '/', [prefix])
   const [copied, setCopied] = React.useState(false)
   const [tooltipPos, setTooltipPos] = React.useState(null as null | { x: number; y: number })
   const copyTimer = React.useRef(undefined as any)
@@ -425,8 +431,9 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
         setTotalBytes(0)
       }
       const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix, token: tokenToUse })
-  setTotalObjects(prev => prev + (res.objects || 0))
-  setTotalFiles(prev => prev + (res.files || 0))
+      // Track totals: use files for displayed "Total objects" (exclude folder markers)
+      setTotalObjects(prev => prev + (res.objects || 0))
+      setTotalFiles(prev => prev + (res.files || 0))
       // Derive unique folder paths from keys to avoid over/under counting
       if (Array.isArray(res.keys)) {
         const set = uniqueFoldersRef.current
@@ -435,13 +442,15 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
           if (!k.startsWith(prefix)) continue
           const remainder = k.slice(prefix.length)
           const parts = remainder.split('/').filter(Boolean)
-          // If key is exactly the folder marker (remainder empty), count current prefix as a folder once
-          if (parts.length === 0) {
+          const isFolderKey = k.endsWith('/')
+          // Include all directory levels. For files, exclude the final filename segment.
+          const depth = isFolderKey ? parts.length : Math.max(0, parts.length - 1)
+          if (parts.length === 0 && isFolderKey) {
+            // Key equals the current prefix (rare), count it as one folder
             set.add(prefix)
-          } else {
-            // add each directory level for nested folders
+          } else if (depth > 0) {
             let acc = prefix
-            for (let i = 0; i < parts.length - 1; i++) {
+            for (let i = 0; i < depth; i++) {
               acc += parts[i] + '/'
               set.add(acc)
             }
@@ -452,7 +461,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
         // fallback to backend hint
         setTotalFolders(prev => prev + (res.folders || 0))
       }
-  setTotalBytes(prev => prev + (res.bytes || 0))
+      setTotalBytes(prev => prev + (res.bytes || 0))
       setScanToken(res.nextToken)
       setPagesScanned(p => p + 1)
     } catch (e) {
@@ -470,7 +479,8 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
 
   // Auto-scan on open: scan up to configured number of pages, then stop and show lower-bound if more remains
   React.useEffect(() => {
-    if (!bucket || !prefix) return
+    // Allow auto-scan even at root (empty prefix)
+    if (!bucket) return
     const limit = Math.max(1, Number(settings?.folderScanAutoPages || 10))
     let mounted = true
     ;(async () => {
@@ -486,19 +496,22 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
           if (!mounted || abortRef.current) break
           const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix, token })
           if (!mounted) break
-      setTotalObjects(prev => prev + (res.objects || 0))
-      setTotalFiles(prev => prev + (res.files || 0))
+          // Use files for displayable objects
+          setTotalObjects(prev => prev + (res.objects || 0))
+          setTotalFiles(prev => prev + (res.files || 0))
           if (Array.isArray(res.keys)) {
             const set = uniqueFoldersRef.current
             for (const k of res.keys) {
               if (!k.startsWith(prefix)) continue
               const remainder = k.slice(prefix.length)
               const parts = remainder.split('/').filter(Boolean)
-              if (parts.length === 0) {
+              const isFolderKey = k.endsWith('/')
+              const depth = isFolderKey ? parts.length : Math.max(0, parts.length - 1)
+              if (parts.length === 0 && isFolderKey) {
                 set.add(prefix)
-              } else {
+              } else if (depth > 0) {
                 let acc = prefix
-                for (let i = 0; i < parts.length - 1; i++) {
+                for (let i = 0; i < depth; i++) {
                   acc += parts[i] + '/'
                   set.add(acc)
                 }
@@ -508,7 +521,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
           } else {
             setTotalFolders(prev => prev + (res.folders || 0))
           }
-      setTotalBytes(prev => prev + (res.bytes || 0))
+          setTotalBytes(prev => prev + (res.bytes || 0))
           setPagesScanned(p => p + 1)
           token = res.nextToken
           setScanToken(token)
@@ -540,19 +553,21 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
       let token = scanToken
       while (token && !abortRef.current) {
         const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix, token })
-  setTotalObjects(prev => prev + (res.objects || 0))
-  setTotalFiles(prev => prev + (res.files || 0))
+        setTotalObjects(prev => prev + (res.objects || 0))
+        setTotalFiles(prev => prev + (res.files || 0))
         if (Array.isArray(res.keys)) {
           const set = uniqueFoldersRef.current
           for (const k of res.keys) {
             if (!k.startsWith(prefix)) continue
             const remainder = k.slice(prefix.length)
             const parts = remainder.split('/').filter(Boolean)
-            if (parts.length === 0) {
+            const isFolderKey = k.endsWith('/')
+            const depth = isFolderKey ? parts.length : Math.max(0, parts.length - 1)
+            if (parts.length === 0 && isFolderKey) {
               set.add(prefix)
-            } else {
+            } else if (depth > 0) {
               let acc = prefix
-              for (let i = 0; i < parts.length - 1; i++) {
+              for (let i = 0; i < depth; i++) {
                 acc += parts[i] + '/'
                 set.add(acc)
               }
@@ -562,7 +577,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
         } else {
           setTotalFolders(prev => prev + (res.folders || 0))
         }
-  setTotalBytes(prev => prev + (res.bytes || 0))
+        setTotalBytes(prev => prev + (res.bytes || 0))
         setPagesScanned(p => p + 1)
         token = res.nextToken
         setScanToken(token)
@@ -611,9 +626,9 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
             <span>S3 URI:</span>
           </span>
           <span className="font-mono break-all min-w-0">{s3Uri}</span>
-        </div>
-        <div><span className="opacity-70">Total objects:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalObjects.toLocaleString()}</div>
-        <div><span className="opacity-70">Total files:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFiles.toLocaleString()}</div>
+  </div>
+  {/* Display files under the label "Total objects" */}
+  <div><span className="opacity-70">Total objects:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFiles.toLocaleString()}</div>
         <div><span className="opacity-70">Total folders:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFolders.toLocaleString()}</div>
         <div><span className="opacity-70">Total size:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{formatSize(totalBytes)}</div>
         <div className="col-span-2 flex flex-wrap items-center gap-2 mt-2">
