@@ -8,7 +8,7 @@ import MountLocationModal from './MountLocationModal'
 import EditProfilesModal from './EditProfilesModal'
 
 export default function SidebarBuckets() {
-  const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings, navSelection, setNavSelection, setProfile, setIsSwitchingProfile, activeTabId } = useStore() as any
+  const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings, navSelection, setNavSelection, setProfile, setIsSwitchingProfile, activeTabId, isProfilesOpen, closeProfiles } = useStore() as any
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
   const [profiles, setProfiles] = useState([] as any[])
   const [refreshingProfiles, setRefreshingProfiles] = useState(false)
@@ -16,6 +16,10 @@ export default function SidebarBuckets() {
   const [showCreateBucket, setShowCreateBucket] = useState(false)
   const [showMountModal, setShowMountModal] = useState(false)
   const [showEditProfiles, setShowEditProfiles] = useState(false)
+  // Sync with global store trigger (menu View > AWS Profiles)
+  useEffect(() => {
+    if (isProfilesOpen) setShowEditProfiles(true)
+  }, [isProfilesOpen])
   const [bucketFilter, setBucketFilter] = useState('')
   // Profile selection now uses a simple native <select>
   const [mountMenu, setMountMenu] = useState(null as { idx: number; x: number; y: number } | null)
@@ -456,7 +460,7 @@ export default function SidebarBuckets() {
       />
       <EditProfilesModal
         isOpen={showEditProfiles}
-        onClose={() => setShowEditProfiles(false)}
+        onClose={() => { setShowEditProfiles(false); try { closeProfiles() } catch {} }}
         onSaved={async () => { await refreshProfiles() }}
       />
     </div>

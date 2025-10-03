@@ -214,6 +214,15 @@ function LogPanel() {
   )
 }
 
+// Reusable copy icon
+function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/>
+    </svg>
+  )
+}
+
 // Object properties split in multiple tables: Details, Metadata (placeholder), Tags (placeholder)
 function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keyStr: string; details?: any }) {
   // For now, we use information encoded in the key; deeper metadata/tags could be queried later.
@@ -225,103 +234,124 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
   const keyBtnRef = React.useRef(null as any)
   const etagBtnRef = React.useRef(null as any)
   const uriBtnRef = React.useRef(null as any)
+  const filenameBtnRef = React.useRef(null as any)
 
-  function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
-    return (
-      <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
-        <path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/>
-      </svg>
-    )
+  const filename = React.useMemo(() => keyStr.split('/').slice(-1)[0], [keyStr])
+  const filetype = React.useMemo(() => {
+    if (details?.contentType) return details.contentType
+    const dot = filename.lastIndexOf('.')
+    return dot > 0 ? filename.slice(dot + 1).toLowerCase() : 'unknown'
+  }, [details?.contentType, filename])
+
+  const labelClass = "opacity-70 select-none w-20 flex items-center gap-1 text-xs"
+  const valueClass = "min-w-0"
+  const rowClass = "flex items-start gap-1 min-w-0"
+  const wrapGrid = "grid grid-cols-2 gap-x-6 gap-y-2"
+
+  function showCopiedTooltip(ref: any) {
+    if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    const rect = ref?.getBoundingClientRect?.()
+    if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
+    setCopied(true)
+    copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
   }
+
   return (
     <div className="p-3 text-sm">
-      <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-  {/* Row 1: Key (left) */}
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="opacity-70 select-none w-20">Key:</span>
-          <button
-            ref={keyBtnRef}
-            className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1"
-            title="Copy key"
-            aria-label="Copy key"
-            onClick={async () => {
-              try { await navigator.clipboard.writeText(keyStr) } catch {}
-              // Tooltip feedback
-              if (copyTimer.current) window.clearTimeout(copyTimer.current)
-              const rect = keyBtnRef.current?.getBoundingClientRect()
-              if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
-              setCopied(true)
-              copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
-            }}
-          >
-            <CopyIcon />
-          </button>
-          <span className="font-mono break-all">{keyStr}</span>
+      <div className={wrapGrid}>
+        {/* Key (left) with copy icon left of label */}
+        <div className={rowClass}>
+          <span className={labelClass}>
+            <button
+              ref={keyBtnRef}
+              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5"
+              title="Copy key"
+              aria-label="Copy key"
+              onClick={async () => { try { await navigator.clipboard.writeText(keyStr) } catch {}; showCopiedTooltip(keyBtnRef.current) }}
+            >
+              <CopyIcon />
+            </button>
+            <span>Key:</span>
+          </span>
+          <span className={`font-mono break-all ${valueClass}`}>{keyStr}</span>
         </div>
 
-        {/* Row 1: Last modified (right) */}
-        {details ? (
-          <div><span className="opacity-70">Last modified:</span> {details.lastModified ? new Date(details.lastModified).toLocaleString() : '-'}</div>
-        ) : <div />}
+        {/* Last modified (right) */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>Last modified:</span></span>
+          <span className={valueClass}>{details?.lastModified ? new Date(details.lastModified).toLocaleString() : '-'}</span>
+        </div>
 
-        {details && (
-          <>
-            {/* Row 2: S3 URI (left) */}
-            {bucket ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="opacity-70 select-none w-20">S3 URI:</span>
-                <button
-                  ref={uriBtnRef}
-                  className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1"
-                  title="Copy S3 URI"
-                  aria-label="Copy S3 URI"
-                  onClick={async () => {
-                    if (!s3Uri) return
-                    try { await navigator.clipboard.writeText(s3Uri) } catch {}
-                    if (copyTimer.current) window.clearTimeout(copyTimer.current)
-                    const rect = uriBtnRef.current?.getBoundingClientRect()
-                    if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
-                    setCopied(true)
-                    copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
-                  }}
-                >
-                  <CopyIcon />
-                </button>
-                <span className="font-mono break-all">{s3Uri}</span>
-              </div>
-            ) : <div />}
+        {/* Filename (left) with copy icon */}
+        <div className={rowClass}>
+          <span className={labelClass}>
+            <button
+              ref={filenameBtnRef}
+              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5"
+              title="Copy filename"
+              aria-label="Copy filename"
+              onClick={async () => { try { await navigator.clipboard.writeText(filename) } catch {}; showCopiedTooltip(filenameBtnRef.current) }}
+            >
+              <CopyIcon />
+            </button>
+            <span>Filename:</span>
+          </span>
+          <span className={`font-mono break-all ${valueClass}`}>{filename}</span>
+        </div>
 
-            {/* Row 2: Storage class (right) */}
-            <div><span className="opacity-70">Storage class:</span> {details.storageClass ?? ''}</div>
+        {/* File type (right) */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>File type:</span></span>
+          <span className={valueClass}>{filetype}</span>
+        </div>
 
-            {/* Row 3: ETag (left) */}
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="opacity-70 select-none w-20">ETag:</span>
-              <button
-                ref={etagBtnRef}
-                className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1 disabled:opacity-40"
-                title="Copy ETag"
-                aria-label="Copy ETag"
-                disabled={!details.etag}
-                onClick={async () => {
-                  if (!details.etag) return
-                  try { await navigator.clipboard.writeText(details.etag) } catch {}
-                  if (copyTimer.current) window.clearTimeout(copyTimer.current)
-                  const rect = etagBtnRef.current?.getBoundingClientRect()
-                  if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
-                  setCopied(true)
-                  copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
-                }}
-              >
-                <CopyIcon />
-              </button>
-              <span className="font-mono break-all">{details.etag ?? ''}</span>
-            </div>
+        {/* S3 URI (left) with copy icon left of label; show even if details missing */}
+        <div className={rowClass}>
+          <span className={labelClass}>
+            <button
+              ref={uriBtnRef}
+              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5 disabled:opacity-40"
+              title="Copy S3 URI"
+              aria-label="Copy S3 URI"
+              disabled={!s3Uri}
+              onClick={async () => { if (!s3Uri) return; try { await navigator.clipboard.writeText(s3Uri) } catch {}; showCopiedTooltip(uriBtnRef.current) }}
+            >
+              <CopyIcon />
+            </button>
+            <span>S3 URI:</span>
+          </span>
+          <span className={`font-mono break-all ${valueClass}`}>{s3Uri}</span>
+        </div>
 
-            {/* Row 3: Size (right) */}
-            <div><span className="opacity-70">Size:</span> {formatSize(details.size || 0)}</div>
-          </>
-        )}
+        {/* Storage class (right) */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>Storage class:</span></span>
+          <span className={valueClass}>{details?.storageClass ?? ''}</span>
+        </div>
+
+        {/* ETag (left) with copy */}
+        <div className={rowClass}>
+          <span className={labelClass}>
+            <button
+              ref={etagBtnRef}
+              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5 disabled:opacity-40"
+              title="Copy ETag"
+              aria-label="Copy ETag"
+              disabled={!details?.etag}
+              onClick={async () => { if (!details?.etag) return; try { await navigator.clipboard.writeText(details.etag) } catch {}; showCopiedTooltip(etagBtnRef.current) }}
+            >
+              <CopyIcon />
+            </button>
+            <span>ETag:</span>
+          </span>
+          <span className={`font-mono break-all ${valueClass}`}>{details?.etag ?? ''}</span>
+        </div>
+
+        {/* Size (right) */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>Size:</span></span>
+          <span className={valueClass}>{formatSize(details?.size || 0)}</span>
+        </div>
       </div>
 
       {/* Tooltip via portal */}
@@ -353,19 +383,35 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
   const [autoStopped, setAutoStopped] = React.useState(false)
   const abortRef = React.useRef(false)
 
+  const s3Uri = bucket ? `s3://${bucket}/${prefix}` : ''
+  const name = React.useMemo(() => prefix, [prefix])
+  const [copied, setCopied] = React.useState(false)
+  const [tooltipPos, setTooltipPos] = React.useState(null as null | { x: number; y: number })
+  const copyTimer = React.useRef(undefined as any)
+  const nameBtnRef = React.useRef(null as any)
+  const uriBtnRef = React.useRef(null as any)
+
+  function showCopiedTooltip(ref: any) {
+    if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    const rect = ref?.getBoundingClientRect?.()
+    if (rect) setTooltipPos({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top - 8) })
+    setCopied(true)
+    copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
+  }
+
   React.useEffect(() => {
     setScanToken(undefined)
     setTotalObjects(0)
     setTotalBytes(0)
-  setTotalFiles(0)
-  setTotalFolders(0)
+    setTotalFiles(0)
+    setTotalFolders(0)
     setIsScanning(false)
     setIsAborted(false)
     setError(undefined)
     setPagesScanned(0)
     setAutoStopped(false)
     abortRef.current = false
-  uniqueFoldersRef.current = new Set()
+    uniqueFoldersRef.current = new Set()
   }, [prefix, bucket])
 
   async function scanNextPage() {
@@ -531,8 +577,41 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
   return (
     <div className="p-3 text-sm">
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 items-start">
-        <div><span className="opacity-70">Name:</span> <span className="font-mono break-all">{prefix}</span></div>
+        {/* Name with copy icon */}
+        <div className="flex items-start gap-1 min-w-0">
+          <span className="opacity-70 select-none w-20 flex items-center gap-1 text-xs">
+            <button
+              ref={nameBtnRef}
+              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5"
+              title="Copy name"
+              aria-label="Copy name"
+              onClick={async () => { try { await navigator.clipboard.writeText(name) } catch {}; showCopiedTooltip(nameBtnRef.current) }}
+            >
+              <CopyIcon />
+            </button>
+            <span>Name:</span>
+          </span>
+          <span className="font-mono break-all min-w-0">{name}</span>
+        </div>
         <div><span className="opacity-70">Storage class:</span> <span className="opacity-80">-</span></div>
+
+        {/* S3 URI with copy icon */}
+        <div className="flex items-start gap-1 min-w-0">
+          <span className="opacity-70 select-none w-20 flex items-center gap-1 text-xs">
+            <button
+              ref={uriBtnRef}
+              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5 disabled:opacity-40"
+              title="Copy S3 URI"
+              aria-label="Copy S3 URI"
+              disabled={!s3Uri}
+              onClick={async () => { if (!s3Uri) return; try { await navigator.clipboard.writeText(s3Uri) } catch {}; showCopiedTooltip(uriBtnRef.current) }}
+            >
+              <CopyIcon />
+            </button>
+            <span>S3 URI:</span>
+          </span>
+          <span className="font-mono break-all min-w-0">{s3Uri}</span>
+        </div>
         <div><span className="opacity-70">Total objects:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalObjects.toLocaleString()}</div>
         <div><span className="opacity-70">Total files:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFiles.toLocaleString()}</div>
         <div><span className="opacity-70">Total folders:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFolders.toLocaleString()}</div>

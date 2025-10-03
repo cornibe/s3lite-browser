@@ -75,6 +75,13 @@ export default function App() {
     })
     return () => { if (typeof off === 'function') off() }
   }, [])
+  // Open AWS Profiles when menu triggers it
+  useEffect(() => {
+    const off = (window as any)?.api?.ui?.onOpenProfiles?.(() => {
+      try { (useStore.getState() as any).openProfiles() } catch {}
+    })
+    return () => { if (typeof off === 'function') off() }
+  }, [])
   const compact = Boolean(settings.compactMode)
   return (
     <div ref={containerRef} className={`${dark ? 'dark' : ''} ${compact ? 'compact' : ''} h-full`}>

@@ -21,6 +21,7 @@ const Channels = {
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
   UI_MESSAGE_BOX: 'ui:messageBox',
   UI_OPEN_SETTINGS: 'ui:openSettings',
+  UI_OPEN_PROFILES: 'ui:openProfiles',
   LOG_WRITE: 'log:write',
   LOG_GET_LEVEL: 'log:getLevel',
   LOG_SET_LEVEL: 'log:setLevel',
@@ -73,6 +74,11 @@ const api: RendererAPI = {
       const handler = () => cb()
       ipcRenderer.on(Channels.UI_OPEN_SETTINGS, handler)
       return () => ipcRenderer.removeListener(Channels.UI_OPEN_SETTINGS, handler)
+  },
+  onOpenProfiles: (cb: () => void) => {
+      const handler = () => cb()
+      ipcRenderer.on(Channels.UI_OPEN_PROFILES, handler)
+      return () => ipcRenderer.removeListener(Channels.UI_OPEN_PROFILES, handler)
   },
   exportObjectList: (params: { defaultPath?: string; rows: Array<Record<string, any>> }) => ipcRenderer.invoke(Channels.UI_EXPORT_OBJECT_LIST, params)
   },
