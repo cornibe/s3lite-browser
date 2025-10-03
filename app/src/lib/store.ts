@@ -79,6 +79,7 @@ type State = {
   transferStats: TabState['transferStats']
   // Global UI
   isSettingsOpen?: boolean
+  isProfilesOpen?: boolean
   settings: SettingsState
   // Job -> tab mapping to route transfer events
   jobTab: Record<string, string>
@@ -109,6 +110,8 @@ type Actions = {
   // Global UI
   openSettings: () => void
   closeSettings: () => void
+  openProfiles: () => void
+  closeProfiles: () => void
   setSettings: (settings: Partial<SettingsState>) => void
   // Accepts either an object payload or legacy (type, message, duration)
   showToast: (
@@ -220,7 +223,8 @@ export const useStore = create<State & Actions>((set, get) => {
     transfers: initialTab.transfers,
   transferStats: initialTab.transferStats,
     // Global UI
-    isSettingsOpen: false,
+  isSettingsOpen: false,
+  isProfilesOpen: false,
     settings: loadSettings(),
     toast: undefined,
     // job mapping
@@ -342,6 +346,8 @@ export const useStore = create<State & Actions>((set, get) => {
     // Global UI
     openSettings: () => set({ isSettingsOpen: true }),
     closeSettings: () => set({ isSettingsOpen: false }),
+  openProfiles: () => set({ isProfilesOpen: true }),
+  closeProfiles: () => set({ isProfilesOpen: false }),
     setSettings: (partial) => set(s => { const next = { ...s.settings, ...partial }; persistSettings(next); return { settings: next } }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     showToast: ((...args: any[]) => {

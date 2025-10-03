@@ -116,6 +116,14 @@ async function setup() {
           }
         },
         {
+          label: 'AWS Profiles',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('ui:openProfiles')
+            }
+          }
+        },
+        {
           label: 'Open Logs Folder',
           click: async () => { await getLogger().openLogsFolder() }
         },

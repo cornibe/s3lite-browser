@@ -121,6 +121,73 @@ function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
 export default function ObjectExplorer() {
   const { connected, profile, bucket, prefix, setPrefix, selectedKey, selectedType, setSelected, setSelectedKey, setSelectedDetails, isSwitchingProfile, connectionError, openSettings, registerJobForActiveTab, showToast, selectBucket, settings, setSettings } = useStore() as any
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage, isFetching, refetch } = useObjects({ profile, bucket: bucket!, prefix, enabled: Boolean(bucket) })
+  // Auto-pagination progress modal state
+  const [showFetchProgress, setShowFetchProgress] = useState(false)
+  const autoLoadingRef = useRef(false)
+  const abortAutoLoadRef = useRef(false)
+  const dataRef = useRef(data)
+  const hasNextPageRef = useRef(hasNextPage)
+  useEffect(() => { dataRef.current = data }, [data])
+  useEffect(() => { hasNextPageRef.current = hasNextPage ?? false }, [hasNextPage])
+
+  // Reset auto-load flags when location changes
+  useEffect(() => {
+    autoLoadingRef.current = false
+    abortAutoLoadRef.current = false
+    setShowFetchProgress(false)
+  }, [bucket, prefix])
+
+  // Start auto-fetching pages when many pages exist; show progress modal with Abort
+  useEffect(() => {
+    // Only when we have at least one page and there's more to load
+    const pages = data?.pages?.length ?? 0
+    if (!bucket || isLoading || pages === 0) return
+    if (!hasNextPage) return
+    if (abortAutoLoadRef.current) return
+    if (autoLoadingRef.current) return
+
+    autoLoadingRef.current = true
+    abortAutoLoadRef.current = false
+    setShowFetchProgress(false)
+
+    let canceled = false
+    const run = async () => {
+      try {
+        // Small yield to let modal paint before heavy paging
+        await new Promise(r => setTimeout(r, 0))
+        // Keep fetching until no next page or aborted
+        // Guard against rapid state changes by reading refs
+        while (!abortAutoLoadRef.current && hasNextPageRef.current && !canceled) {
+          try {
+            await fetchNextPage()
+          } catch (e) {
+            // Stop on error; modal will close and user can retry
+            break
+          }
+          // Allow UI to update between pages
+          await new Promise(r => setTimeout(r, 0))
+        }
+      } finally {
+        setShowFetchProgress(false)
+        autoLoadingRef.current = false
+      }
+    }
+    run()
+    return () => { canceled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucket, prefix, hasNextPage, isLoading, data])
+
+  // Only show the progress modal after more than 5 pages have been loaded
+  useEffect(() => {
+    const pages = data?.pages?.length ?? 0
+    if (autoLoadingRef.current && !abortAutoLoadRef.current && pages > 2 && (hasNextPageRef.current || isFetchingNextPage)) {
+      setShowFetchProgress(true)
+    }
+    // Hide when no more pages or aborted
+    if (!hasNextPageRef.current || abortAutoLoadRef.current) {
+      setShowFetchProgress(false)
+    }
+  }, [data, isFetchingNextPage])
   const listRef = useRef(null as any)
   const contentRef = useRef(null as any)
   const lastDragPointRef = useRef(null as any)
@@ -281,6 +348,14 @@ export default function ObjectExplorer() {
     }
     return entries
   }, [data])
+  // Progress metrics derived from loaded data
+  const totalPagesLoaded = (data?.pages?.length ?? 0)
+  const totalObjectsLoaded = useMemo(() => {
+    const pages = data?.pages ?? []
+    let cnt = 0
+    for (const p of pages) cnt += (p.objects?.length ?? 0)
+    return cnt
+  }, [data])
   // Keep itemsRef in sync for global drop handler
   useEffect(() => { itemsRef.current = items }, [items])
 
@@ -296,6 +371,15 @@ export default function ObjectExplorer() {
     it.type === 'folder'
       ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/'
       : it.data.key.split('/').slice(-1)[0]
+
+  // Compute file type from extension (lowercase), empty string if none or folder
+  const getFileType = (it: Entry) => {
+    if (it.type !== 'object') return ''
+    const base = it.data.key.split('/').slice(-1)[0]
+    const dot = base.lastIndexOf('.')
+    if (dot <= 0 || dot === base.length - 1) return ''
+    return base.slice(dot + 1).toLowerCase()
+  }
 
   const filteredItems: Entry[] = useMemo(() => {
     const q = objectFilter.trim().toLowerCase()
@@ -316,6 +400,12 @@ export default function ObjectExplorer() {
     objects.sort((a, b) => {
       if (sortBy === 'name') {
         return collator.compare(getName(a), getName(b)) * dirMul
+      }
+      if (sortBy === 'type') {
+        const at = getFileType(a)
+        const bt = getFileType(b)
+        const cmp = collator.compare(at, bt)
+        return (cmp === 0 ? collator.compare(getName(a), getName(b)) : cmp) * dirMul
       }
       if (sortBy === 'size') {
         const av = a.data.size ?? 0
@@ -945,18 +1035,18 @@ export default function ObjectExplorer() {
 
   const crumbs = splitPrefix(prefix)
   const parentPrefix = prefix.split('/').slice(0, -2).join('/') + (prefix ? '/' : '')
-  const toggleSort = (field: 'name' | 'size' | 'lastModified') => {
+  const toggleSort = (field: 'name' | 'type' | 'size' | 'lastModified') => {
     if (sortBy === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     else { setSortBy(field); setSortDir('asc') }
   }
-  const sortIndicator = (field: 'name' | 'size' | 'lastModified') => sortBy === field ? (sortDir === 'asc' ? '▲' : '▼') : ''
+  const sortIndicator = (field: 'name' | 'type' | 'size' | 'lastModified') => sortBy === field ? (sortDir === 'asc' ? '▲' : '▼') : ''
 
   if (!connected) {
     return (
       <div className="flex-1 flex items-center justify-center bg-panel">
         <div className="text-center p-6">
           <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-header flex items-center justify-center">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 opacity-70"><path d="M3 12h2a7 7 0 0 1 7-7V3A9 9 0 0 0 3 12zm2 0H3a9 9 0 0 0 9 9v-2a7 7 0 0 1-7-7zm16 0a9 9 0 0 0-9-9v2a7 7 0 0 1 7 7h2zm-2 0a7 7 0 0 1-7 7v2a9 9 0 0 0 9-9h-2z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 opacity-70"><path d="M3 12h2a7 7 0 0 1 7-7V3A9 9 0 0 0 3 12zm2 0H3a9 9 0 0 0 9 9v-2a7 7 0 0 1-7-7zm16 7a9 9 0 0 0-9-9v2a7 7 0 0 1 7 7h2zm-2-7a7 7 0 0 1-7 7v2a9 9 0 0 0 9-9h-2z"/></svg>
           </div>
           <h2 className="text-lg font-semibold mb-2">Not connected</h2>
           <p className="text-sm opacity-80">Select a profile from the top bar to connect.</p>
@@ -1117,7 +1207,7 @@ export default function ObjectExplorer() {
           <div className="h-full w-full flex items-center justify-center p-6">
             <div className="max-w-2xl text-center">
               <div className="mx-auto mb-4 h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400">
-                <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6"><path d="M11 15h2v2h-2zm0-8h2v6h-2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6"><path d="M3 12h2a7 7 0 0 1 7-7V3A9 9 0 0 0 3 12zm2 0H3a9 9 0 0 0 9 9v-2a7 7 0 0 1-7-7zm16 7a9 9 0 0 0-9-9v2a7 7 0 0 1 7 7h2zm-2-7a7 7 0 0 1-7 7v2a9 9 0 0 0 9-9h-2z"/></svg>
               </div>
               <h2 className="text-lg font-semibold mb-2">Connection failed</h2>
               <p className="text-sm opacity-80 mb-4">{connectionError}</p>
@@ -1170,6 +1260,11 @@ export default function ObjectExplorer() {
                     <th className="px-3 py-2 font-medium">
                       <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('name')}>
                         Name <span className="opacity-70">{sortIndicator('name')}</span>
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 w-28 font-medium">
+                      <button className="flex items-center gap-1 hover:underline" onClick={() => toggleSort('type')}>
+                        Type <span className="opacity-70">{sortIndicator('type')}</span>
                       </button>
                     </th>
                     <th className="px-3 py-2 w-32 font-medium">
@@ -1256,6 +1351,7 @@ export default function ObjectExplorer() {
                         <span className="truncate">{name}</span>
                       </div>
                     </td>
+                    <td className="px-3 py-2">{it.type === 'object' ? (() => { const d = name.lastIndexOf('.'); const t = (d > 0 && d < name.length - 1) ? name.slice(d + 1).toLowerCase() : ''; return t ? t.toUpperCase() : '' })() : '-'}</td>
                     <td className="px-3 py-2 tabular-nums">{it.type === 'object' ? formatSize(it.data.size) : '-'}</td>
                     <td className="px-3 py-2">{it.type === 'object' && it.data.lastModified ? new Date(it.data.lastModified).toLocaleString() : '-'}</td>
                     <td className="px-3 py-2">{it.type === 'object' ? (it.data.storageClass ?? '') : ''}</td>
@@ -1446,6 +1542,29 @@ export default function ObjectExplorer() {
           return it ? [it] as any : []
         })()}
       />
+
+      {/* Auto-fetch progress modal */}
+      {showFetchProgress && (
+        createPortal(
+      <div className="fixed inset-0 z-[9998]">
+            <div className="absolute inset-0 bg-black/40" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] max-w-[95vw] rounded menu-bg border border-default shadow p-4">
+        <div className="font-semibold mb-2">Fetching objects...</div>
+        <div className="text-sm opacity-80 mb-3">Total Pages: {totalPagesLoaded.toLocaleString()}   Total objects: {totalObjectsLoaded.toLocaleString()}</div>
+              <div className="flex items-center justify-end gap-2 mt-4">
+                <button
+                  className="btn text-xs cursor-pointer"
+                  style={{ backgroundColor: 'rgba(220,38,38,0.12)', color: 'var(--color-fg)' }}
+                  onClick={() => { abortAutoLoadRef.current = true; setShowFetchProgress(false) }}
+                >
+                  Abort
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      )}
     </div>
   )
 }
