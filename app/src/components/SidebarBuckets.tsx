@@ -10,6 +10,9 @@ import EditProfilesModal from './EditProfilesModal'
 export default function SidebarBuckets() {
   const { bucket, profile, connected, selectBucket, setPrefix, connectionError, setConnectionError, setConnected, isSwitchingProfile, settings, setSettings, navSelection, setNavSelection, setProfile, setIsSwitchingProfile, activeTabId, isProfilesOpen, closeProfiles } = useStore() as any
   const { data, isLoading, isError, error, refetch } = useBuckets(connected, profile)
+  // Local-only error for listing buckets. We don't want to block the whole app
+  // (e.g., mounted locations) when ListBuckets is not allowed.
+  const [bucketsError, setBucketsError] = useState<string | undefined>(undefined)
   const [profiles, setProfiles] = useState([] as any[])
   const [refreshingProfiles, setRefreshingProfiles] = useState(false)
   const [profileCollapsed, setProfileCollapsed] = useState(Boolean(settings?.sidebarProfileCollapsed))
@@ -69,27 +72,50 @@ export default function SidebarBuckets() {
     }
   }
 
-  // If listing buckets fails (for example missing region or invalid creds),
-  // surface that as a connectionError and clear any selected bucket/prefix so
-  // stale UI is not shown. Clear the connectionError when buckets load.
+  // If listing buckets fails:
+  // - For AccessDenied (common when profiles can access only specific buckets),
+  //   do NOT set global connectionError and do NOT clear selection; allow mounted
+  //   buckets to be used in the main panel. Show a small local warning instead.
+  // - For other errors (e.g., bad region/creds), keep previous behavior and surface
+  //   as a global connectionError.
   useEffect(() => {
     if (isError) {
       const msg = (error as Error)?.message || 'Failed to load buckets.'
-      setConnectionError(msg)
-  warn('ui', 'buckets load failed', { error: msg })
-      // clear selected bucket/prefix when failure happens
-      selectBucket(undefined)
-      setNavSelection(undefined)
+      const accessDenied = /access denied|403/i.test(msg)
+      if (accessDenied) {
+        // Keep app connected and usable; just show a local warning and clear any previous global error
+        setBucketsError(msg)
+        if (connectionError) setConnectionError(undefined)
+        warn('ui', 'buckets list denied; using mounts fallback', { error: msg })
+      } else {
+        setBucketsError(undefined)
+        setConnectionError(msg)
+        warn('ui', 'buckets load failed', { error: msg })
+        // clear selected bucket/prefix when a fatal failure happens
+        selectBucket(undefined)
+        setNavSelection(undefined)
+      }
     } else if (data && data.length > 0) {
-      // successful load: clear any previous connection error
+      // successful load: clear any previous connection error and local warning
       if (connectionError) setConnectionError(undefined)
+      if (bucketsError) setBucketsError(undefined)
     }
-  }, [isError, error, data, selectBucket, setConnectionError, connectionError, setNavSelection])
+  }, [isError, error, data, selectBucket, setConnectionError, connectionError, setNavSelection, bucketsError])
 
   useEffect(() => {
     if (!connected) return
-    if (!bucket && data && data.length > 0) { selectBucket(data[0]); setNavSelection({ type: 'bucket', id: data[0] }) }
-  }, [connected, bucket, data, selectBucket, setNavSelection])
+    if (!bucket) {
+      if (data && data.length > 0) {
+        selectBucket(data[0]); setNavSelection({ type: 'bucket', id: data[0] })
+      } else if (bucketsError && settings?.mounts && settings.mounts.length > 0) {
+        // Auto-select first mounted location as a sensible default when buckets cannot be listed
+        const m = settings.mounts[0]
+        selectBucket(m.bucket)
+        setPrefix(m.prefix ?? '')
+        setNavSelection({ type: 'mount', id: `${m.bucket}:${m.prefix ?? ''}` })
+      }
+    }
+  }, [connected, bucket, data, selectBucket, setNavSelection, setPrefix, bucketsError, settings])
 
   // Keep active bucket scrolled into view
   useEffect(() => {
@@ -240,7 +266,7 @@ export default function SidebarBuckets() {
         )}
   {/* Separator between Profile and Buckets removed to avoid double line */}
       </div>
-      {/* Buckets header, actions, and filter - sticky sibling of list */}
+  {/* Buckets header, actions, and filter - sticky sibling of list */}
       <div className="sticky top-0 bg-header z-10 pt-2 px-3">
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase opacity-70 tracking-wide">Buckets</div>
@@ -286,13 +312,18 @@ export default function SidebarBuckets() {
             </button>
           )}
         </div>
+        {bucketsError && (
+          <div className="pb-2 text-xs text-amber-700 dark:text-amber-300">
+            Cannot list buckets: {bucketsError} Mounted locations are still available below.
+          </div>
+        )}
       </div>
       {!connected && (
         <div className="px-3 py-2 text-sm opacity-80">
           Not connected. Select a profile to connect.
         </div>
       )}
-  {connected && isLoading && <div className="px-3 py-2 text-sm">Loading…</div>}
+  {connected && isLoading && !bucketsError && <div className="px-3 py-2 text-sm">Loading…</div>}
   {isSwitchingProfile && <div className="px-3 py-2 text-sm opacity-70">Switching profile…</div>}
   {/* Connection errors are displayed in the main panel to avoid clutter. */}
   {(!isSwitchingProfile && connected && !isError) && (
