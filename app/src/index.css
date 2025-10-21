@@ -104,6 +104,8 @@
   .link-accent { color: var(--color-accent); }
   /* Dark mode: VS Code link blue for S3 links */
   html.dark .link-accent, :root:where([data-theme="dark"]) .link-accent { color: #9CDCFE; }
+  /* Ensure hand pointer for links and link-like elements */
+  a, .link, .link-accent, [role="link"] { cursor: pointer; }
   .overlay-bg { background-color: var(--color-overlay); }
   .menu-bg { background-color: var(--color-menu); }
 

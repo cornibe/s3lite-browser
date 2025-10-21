@@ -127,7 +127,7 @@ type Actions = {
   clearAwsLog: () => void
 }
 
-function loadSettings(): SettingsState {
+function loadSettingsLocal(): SettingsState {
   try {
     const raw = localStorage.getItem('s3lite.settings')
     if (raw) {
@@ -154,8 +154,35 @@ function loadSettings(): SettingsState {
   return { overwritePolicy: 'prompt', darkMode: true, compactMode: false, bottomPanelTab: 'transfers', mounts: [], folderScanAutoPages: 10, sidebarProfileCollapsed: false }
 }
 
+function normalizeSettings(parsed: any): SettingsState {
+  const base = { overwritePolicy: 'prompt', darkMode: true, compactMode: false, bottomPanelTab: 'transfers', mounts: [], folderScanAutoPages: 10, sidebarProfileCollapsed: false }
+  try {
+    if (!parsed || typeof parsed !== 'object') return base as SettingsState
+    return {
+      overwritePolicy: parsed.overwritePolicy || 'prompt',
+      bandwidthLimitKBps: parsed.bandwidthLimitKBps,
+      requesterPays: Boolean(parsed.requesterPays),
+      objectConcurrency: parsed.objectConcurrency,
+      partConcurrency: parsed.partConcurrency,
+      partSizeMiB: parsed.partSizeMiB,
+      multipartThresholdMiB: parsed.multipartThresholdMiB,
+      darkMode: Boolean(parsed.darkMode),
+      compactMode: Boolean(parsed.compactMode),
+      mounts: Array.isArray(parsed.mounts) ? parsed.mounts.filter((m: any) => m && typeof m.bucket === 'string').map((m: any) => ({ bucket: m.bucket, prefix: m.prefix || undefined })) : [],
+      bottomPanelTab: parsed.bottomPanelTab === 'properties' || parsed.bottomPanelTab === 'log' || parsed.bottomPanelTab === 'preview' ? parsed.bottomPanelTab : 'transfers',
+      sidebarWidthPx: typeof parsed.sidebarWidthPx === 'number' ? parsed.sidebarWidthPx : undefined,
+      queueHeightPx: typeof parsed.queueHeightPx === 'number' ? parsed.queueHeightPx : undefined,
+      folderScanAutoPages: typeof parsed.folderScanAutoPages === 'number' && parsed.folderScanAutoPages > 0 ? parsed.folderScanAutoPages : 10,
+      sidebarProfileCollapsed: Boolean(parsed.sidebarProfileCollapsed)
+    }
+  } catch {
+    return base as SettingsState
+  }
+}
+
 function persistSettings(s: SettingsState) {
   try { localStorage.setItem('s3lite.settings', JSON.stringify(s)) } catch {}
+  try { (window as any).api?.settings?.save?.(s) } catch {}
 }
 
 function createEmptyTab(id: string): TabState {
@@ -225,7 +252,7 @@ export const useStore = create<State & Actions>((set, get) => {
     // Global UI
   isSettingsOpen: false,
   isProfilesOpen: false,
-    settings: loadSettings(),
+  settings: loadSettingsLocal(),
     toast: undefined,
     // job mapping
     jobTab: {},
@@ -642,6 +669,28 @@ export const useStore = create<State & Actions>((set, get) => {
     } catch {}
   }
 })()()
+
+// Load persisted settings from Electron's userData (if available) and subscribe to save updates.
+;(function initPersistentSettings() {
+  try {
+    const w: any = (typeof window !== 'undefined') ? (window as any) : undefined
+    if (!w?.api?.settings) return
+    // Load file-backed settings; if present, replace current settings in store
+    w.api.settings.load().then((res: any) => {
+      try {
+        const fileSettings = res?.settings
+        if (fileSettings && typeof fileSettings === 'object') {
+          const normalized = normalizeSettings(fileSettings)
+          useStore.setState({ settings: normalized })
+        } else {
+          // No file yet: migrate localStorage settings to file
+          const local = loadSettingsLocal()
+          w.api.settings.save(local).catch(() => {})
+        }
+      } catch {}
+    }).catch(() => {})
+  } catch {}
+})()
 
 // Global AWS events subscription: capture S3/xfer events for the log
 ;(function initAwsEventLogging() {

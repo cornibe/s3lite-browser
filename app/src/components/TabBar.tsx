@@ -34,7 +34,7 @@ export default function TabBar() {
 
   return (
     <div className="flex items-center gap-1 px-2 py-1 border-b border-default bg-header text-app select-none">
-      <div className="flex items-center gap-1 overflow-auto">
+      <div className="flex items-center gap-1 overflow-auto" role="tablist" aria-label="Tabs">
         {(() => {
           // Keep sequence per profile for numbering (1), (2), ...
           const seq = new Map<string, number>()
@@ -54,37 +54,38 @@ export default function TabBar() {
             }
 
             return (
-              <div
-                key={t.id}
-                className={`group flex items-center max-w-[22rem] text-sm ${active ? '' : ''}`}
-              >
-                <button
+              <div key={t.id} className={`group flex items-center max-w-[22rem] text-sm`} role="presentation">
+                <div
                   onClick={() => activateTab(t.id)}
-                  className={`tab-btn ${active ? 'tab-btn-active' : ''} truncate`}
+                  className={`tab-btn ${active ? 'tab-btn-active' : ''} flex items-center gap-1 truncate`}
+                  role="tab"
                   aria-selected={active}
                   title={title}
                 >
-                  {title}
-                </button>
-                {items.length > 1 && (
-                  <button
-                    className={`px-1 py-1 opacity-70 hover:opacity-100 ${active ? 'ml-0.5' : ''}`}
-                    onClick={() => closeTab(t.id)}
-                    aria-label="Close tab"
-                    title="Close"
-                  >
-                    <CloseIcon />
-                  </button>
-                )}
+                  <span className="truncate">{title}</span>
+                  {items.length > 1 && (
+                    <button
+                      className="p-0.5 opacity-70 hover:opacity-100"
+                      onClick={(e) => { e.stopPropagation(); closeTab(t.id) }}
+                      aria-label="Close tab"
+                      title="Close"
+                    >
+                      <CloseIcon />
+                    </button>
+                  )}
+                </div>
               </div>
             )
           })
         })()}
-      </div>
-      <div className="ml-auto">
-        <button className="btn btn-secondary inline-flex items-center gap-1" onClick={() => newTab()} aria-label="New tab">
+        {/* New Tab button placed immediately after the last tab */}
+        <button
+          className="tab-btn inline-flex items-center justify-center"
+          onClick={() => newTab()}
+          aria-label="New tab"
+          title="New tab"
+        >
           <PlusIcon />
-          <span className="text-sm">New Tab</span>
         </button>
       </div>
     </div>

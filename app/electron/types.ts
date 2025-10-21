@@ -193,6 +193,11 @@ export interface RendererAPI {
   showMessageBox(options: { type?: 'none' | 'info' | 'error' | 'question' | 'warning'; title?: string; message: string; detail?: string; buttons?: string[] }): Promise<{ response: number }>
   exportObjectList(params: { defaultPath?: string; rows: Array<Record<string, any>> }): Promise<{ ok: true; filePath: string; rows: number } | { ok: false; error?: string; canceled?: boolean }>
   }
+  settings: {
+    load(): Promise<{ ok: true; settings?: any }>
+    save(settings: any): Promise<{ ok: true } | { ok: false; error: string }>
+    openDir(): Promise<{ ok: true }>
+  }
   log: {
     write(payload: { level: 'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL'; scope: string; msg: string; meta?: Record<string, unknown> }): Promise<void>
     getLevel(): Promise<{ level: 'TRACE'|'DEBUG'|'INFO'|'WARN'|'ERROR'|'FATAL' }>
@@ -248,5 +253,8 @@ export const IpcChannels = {
 
 // Custom UI utility channels (non-S3) can be extended here
 export const ExtraIpcChannels = {
-  UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList'
+  UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList',
+  SETTINGS_LOAD: 'settings:load',
+  SETTINGS_SAVE: 'settings:save',
+  SETTINGS_OPEN_DIR: 'settings:openDir'
 } as const

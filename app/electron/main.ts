@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { registerIpc } from './ipc'
+import { openSettingsDir } from './settings'
 import { getLogger, initLogger } from './log'
 
 let mainWindow: BrowserWindow | null = null
@@ -126,6 +127,10 @@ async function setup() {
         {
           label: 'Open Logs Folder',
           click: async () => { await getLogger().openLogsFolder() }
+        },
+        {
+          label: 'Open Settings Folder',
+          click: async () => { await openSettingsDir() }
         },
         {
           label: 'Logging',
