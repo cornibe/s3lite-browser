@@ -5,6 +5,7 @@ import { IpcChannels, ExtraIpcChannels } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
 import { getLogger, safeMeta, redact } from './log'
+import { loadSettingsFile, saveSettingsFile, openSettingsDir } from './settings'
 
 export function registerIpc() {
   ipcMain.handle(IpcChannels.S3_INIT, async (_e, params) => {
@@ -282,6 +283,31 @@ export function registerIpc() {
       getLogger().warn('ipc', 'exportObjectList error', { error: msg })
       return { ok: false as const, error: msg }
     }
+  })
+
+  // Settings persistence
+  ipcMain.handle(ExtraIpcChannels.SETTINGS_LOAD, async () => {
+    try {
+      const s = await loadSettingsFile()
+      return { ok: true as const, settings: s }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to load settings'
+      getLogger().warn('ipc', 'settings:load error', { error: msg })
+      return { ok: true as const, settings: undefined }
+    }
+  })
+  ipcMain.handle(ExtraIpcChannels.SETTINGS_SAVE, async (_e, settings: any) => {
+    try {
+      await saveSettingsFile(settings)
+      return { ok: true as const }
+    } catch (err) {
+      const msg = (err as Error)?.message || 'Failed to save settings'
+      getLogger().warn('ipc', 'settings:save error', { error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+  ipcMain.handle(ExtraIpcChannels.SETTINGS_OPEN_DIR, async () => {
+    try { await openSettingsDir(); return { ok: true as const } } catch { return { ok: true as const } }
   })
 
   // Transfer handlers

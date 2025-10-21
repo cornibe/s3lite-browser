@@ -1,5 +1,5 @@
 {
-  "name": "s3-browser",
+  "name": "s3-browser-lite",
   "version": "0.1.0",
   "private": true,
   "description": "Lightweight S3 bucket/object browser for Windows and macOS",
@@ -8,7 +8,7 @@
   "type": "commonjs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cornibe/s3lite-browser"
+    "url": "https://github.com/cornibe/s3-browser-lite"
   },
   "scripts": {
     "dev": "concurrently -k -n TSC,VITE,ELECTRON \"tsc -w -p tsconfig.electron.json\" \"vite --config electron.vite.ts\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
@@ -49,8 +49,8 @@
     "zustand": "^5.0.2"
   },
   "build": {
-    "appId": "com.cornibe.s3browser",
-  "productName": "S3Browser",
+    "appId": "com.cornibe.s3browserlite",
+  "productName": "S3 Browser-lite",
   "compression": "maximum",
     "directories": {
   "output": "dist"
@@ -63,7 +63,7 @@
     ],
     "win": {
       "icon": "icons/icon.ico",
-      "executableName": "S3Browser",
+      "executableName": "s3-browser-lite",
       "target": [
         "nsis",
         "msi"
@@ -73,18 +73,18 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "s3-browser-lite-Setup-${version}.${ext}"
     },
     "msi": {
-      "artifactName": "${productName}-${version}.msi",
-      "shortcutName": "S3Browser"
+      "artifactName": "s3-browser-lite-${version}.msi",
+      "shortcutName": "S3 Browser-lite"
     },
     "afterSign": false,
     "publish": [
       {
         "provider": "github",
         "owner": "cornibe",
-        "repo": "s3lite-browser"
+        "repo": "s3-browser-lite"
       }
     ]
   }

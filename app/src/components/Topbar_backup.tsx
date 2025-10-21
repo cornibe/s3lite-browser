@@ -70,7 +70,7 @@ export default function Topbar() {
 
   return (
   <div className="border-b border-default bg-header px-4 py-2 flex items-center gap-3">
-      <div className="font-semibold">S3 Browser</div>
+  <div className="font-semibold">S3 Browser-lite</div>
       <div className="w-64 shrink-0 flex items-center gap-2">
   {connected && bucket && (
           <button

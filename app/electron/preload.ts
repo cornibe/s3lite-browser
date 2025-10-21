@@ -37,6 +37,13 @@ const Channels = {
   UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList'
 } as const
 
+const ExtraChannels = {
+  UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList',
+  SETTINGS_LOAD: 'settings:load',
+  SETTINGS_SAVE: 'settings:save',
+  SETTINGS_OPEN_DIR: 'settings:openDir'
+} as const
+
 const api: RendererAPI = {
   s3: {
     init: (params) => ipcRenderer.invoke(Channels.S3_INIT, params),
@@ -81,6 +88,11 @@ const api: RendererAPI = {
       return () => ipcRenderer.removeListener(Channels.UI_OPEN_PROFILES, handler)
   },
   exportObjectList: (params: { defaultPath?: string; rows: Array<Record<string, any>> }) => ipcRenderer.invoke(Channels.UI_EXPORT_OBJECT_LIST, params)
+  },
+  settings: {
+    load: () => ipcRenderer.invoke(ExtraChannels.SETTINGS_LOAD),
+    save: (settings: any) => ipcRenderer.invoke(ExtraChannels.SETTINGS_SAVE, settings),
+    openDir: () => ipcRenderer.invoke(ExtraChannels.SETTINGS_OPEN_DIR)
   },
   log: {
     write: (payload) => ipcRenderer.invoke(Channels.LOG_WRITE, payload),

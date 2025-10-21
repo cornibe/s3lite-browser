@@ -1,4 +1,4 @@
-# Contributing to S3 Browser
+# Contributing to S3 Browser-lite
 
 ## Development Workflow
 1. Fork & branch

@@ -1,5 +1,5 @@
 # AGENTS.md
-**Project:** Cross-Platform S3 Browser  
+**Project:** S3 Browser-lite (cross-platform)  
 **Stack:** Electron + React + TypeScript + Tailwind + AWS SDK v3  
 
 ## Overview

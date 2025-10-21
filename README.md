@@ -1,17 +1,17 @@
-# S3 Browser
+# S3 Browser-lite
 
 Cross-platform desktop application (Windows + macOS) for browsing S3 buckets and objects.
 
 ## Install
 
 - Download the latest installers from GitHub Releases:
-	- Windows (NSIS .exe / MSI .msi): https://github.com/cornibe/s3lite-browser/releases/latest
+	- Windows (NSIS .exe / MSI .msi): https://github.com/cornibe/s3-browser-lite/releases/latest
 	- macOS (coming soon)
 
 ### Quick start
 
 1) Install the app using the downloaded installer.
-2) Launch S3Browser.
+2) Launch S3 Browser-lite.
 3) Open Settings to pick or configure your AWS credentials (profile/Sso).
 4) Select a profile, choose a bucket, and start browsing.
 
@@ -38,11 +38,11 @@ The app writes human-readable text logs to an OS-native location. One line per e
 
 Locations:
 
-- Windows: %LOCALAPPDATA%\S3Browser\Logs\
-- macOS: ~/Library/Logs/S3Browser/
-- Linux: $XDG_STATE_HOME/s3-browser/logs/ or ~/.local/state/s3-browser/logs/, fallback ~/.cache/s3-browser/logs/
+- Windows: %LOCALAPPDATA%\S3 Browser-lite\Logs\
+- macOS: ~/Library/Logs/S3 Browser-lite/
+- Linux: $XDG_STATE_HOME/s3-browser-lite/logs/ or ~/.local/state/s3-browser-lite/logs/, fallback ~/.cache/s3-browser-lite/logs/
 
-File naming: s3-browser-YYYYMMDD.log (with .1/.2/.3 rotated at 10 MB).
+File naming: s3-browser-lite-YYYYMMDD.log (with .1/.2/.3 rotated at 10 MB).
 
 Levels: TRACE, DEBUG, INFO, WARN, ERROR, FATAL.
 
@@ -54,7 +54,7 @@ To collect logs for support:
 
 1. Set S3B_LOG_LEVEL=trace and restart the app, or change via menu.
 2. Reproduce the issue.
-3. Use View -> Open Logs Folder and attach the latest s3-browser-YYYYMMDD.log files.
+3. Use View -> Open Logs Folder and attach the latest s3-browser-lite-YYYYMMDD.log files.
 
 
 ## Build
