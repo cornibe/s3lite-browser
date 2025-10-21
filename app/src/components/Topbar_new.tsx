@@ -70,7 +70,7 @@ export default function Topbar() {
 
   return (
   <div className="border-b border-default bg-header px-4 py-2 flex items-center gap-3">
-      <div className="font-semibold">S3 Browser</div>
+  <div className="font-semibold">S3 Browser-lite</div>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <label className="text-sm opacity-80">Profile</label>
   <select className="input-theme text-sm h-8 px-2 rounded cursor-pointer" value={profile ?? ''} onChange={e => { const next = e.target.value || undefined; setIsSwitchingProfile(true); setConnected(false); setProfile(next); selectBucket(undefined); queryClient.clear(); setError(''); setConnectionError(undefined); if (next) { void connect(next) } else { setStatus('Not connected'); setIsSwitchingProfile(false) } }}>

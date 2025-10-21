@@ -3,16 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>S3 Browser</title>
+  <title>S3 Browser-lite</title>
     <!-- Early dark-mode bootstrapping to avoid white flash -->
     <script>
       try {
-        var raw = localStorage.getItem('s3lite.settings')
+        var raw = localStorage.getItem('s3-browser-lite.settings') || localStorage.getItem('s3lite.settings')
         if (raw) {
           var s = JSON.parse(raw)
           if (s && s.darkMode) {
             document.documentElement.classList.add('dark')
           }
+          // Migrate legacy key to new key for future loads
+          try { localStorage.setItem('s3-browser-lite.settings', raw) } catch (e) {}
         }
       } catch (e) { /* ignore */ }
     </script>

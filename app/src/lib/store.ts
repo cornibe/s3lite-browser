@@ -129,7 +129,7 @@ type Actions = {
 
 function loadSettingsLocal(): SettingsState {
   try {
-    const raw = localStorage.getItem('s3lite.settings')
+    const raw = localStorage.getItem('s3-browser-lite.settings') || localStorage.getItem('s3lite.settings')
     if (raw) {
       const parsed = JSON.parse(raw)
       return {
@@ -181,7 +181,11 @@ function normalizeSettings(parsed: any): SettingsState {
 }
 
 function persistSettings(s: SettingsState) {
-  try { localStorage.setItem('s3lite.settings', JSON.stringify(s)) } catch {}
+  try {
+    localStorage.setItem('s3-browser-lite.settings', JSON.stringify(s))
+    // Cleanup legacy key (optional): keep a copy for older builds
+    localStorage.setItem('s3lite.settings', JSON.stringify(s))
+  } catch {}
   try { (window as any).api?.settings?.save?.(s) } catch {}
 }
 

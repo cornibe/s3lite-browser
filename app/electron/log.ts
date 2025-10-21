@@ -88,16 +88,16 @@ function resolveBaseLogDir(): string {
   const platform = process.platform
   if (platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Local')
-    return path.join(localAppData, 'S3Browser', 'Logs')
+    return path.join(localAppData, 'S3 Browser-lite', 'Logs')
   }
   if (platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Logs', 'S3Browser')
+    return path.join(os.homedir(), 'Library', 'Logs', 'S3 Browser-lite')
   }
   // linux
   const xdg = process.env.XDG_STATE_HOME
-  if (xdg && xdg.trim()) return path.join(xdg, 's3-browser', 'logs')
-  const localState = path.join(os.homedir(), '.local', 'state', 's3-browser', 'logs')
-  const cache = path.join(os.homedir(), '.cache', 's3-browser', 'logs')
+  if (xdg && xdg.trim()) return path.join(xdg, 's3-browser-lite', 'logs')
+  const localState = path.join(os.homedir(), '.local', 'state', 's3-browser-lite', 'logs')
+  const cache = path.join(os.homedir(), '.cache', 's3-browser-lite', 'logs')
   return localState || cache
 }
 
@@ -133,7 +133,7 @@ export class Logger {
     this.level = opts?.level || this.resolveEffectiveLevel()
     this.consoleLevel = this.level
     this.currentDateKey = todayKey(new Date())
-    this.baseFilename = `s3-browser-${this.currentDateKey}.log`
+  this.baseFilename = `s3-browser-lite-${this.currentDateKey}.log`
     this.currentPath = path.join(this.dir, this.baseFilename)
     this.sizeBytes = 0
   }
@@ -217,7 +217,7 @@ export class Logger {
     const key = todayKey(now)
     if (key !== this.currentDateKey) {
       this.currentDateKey = key
-      this.baseFilename = `s3-browser-${this.currentDateKey}.log`
+  this.baseFilename = `s3-browser-lite-${this.currentDateKey}.log`
       this.currentPath = path.join(this.dir, this.baseFilename)
       this.sizeBytes = 0
     }

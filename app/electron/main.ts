@@ -55,17 +55,17 @@ async function setup() {
     const reactVer = pkg?.dependencies?.react ?? 'unknown'
     const viteVer = pkg?.devDependencies?.vite ?? 'unknown'
     const awsVer = pkg?.dependencies?.['@aws-sdk/client-s3'] ?? 'unknown'
-    const website = pkg?.repository?.url?.replace(/^git\+/, '') ?? 'https://github.com/cornibe/s3lite-browser'
+  const website = pkg?.repository?.url?.replace(/^git\+/, '') ?? 'https://github.com/cornibe/s3-browser-lite'
 
     app.setAboutPanelOptions({
-      applicationName: 'S3Browser',
+      applicationName: 'S3 Browser-lite',
       applicationVersion: app.getVersion(),
       authors: [pkg?.author ?? ''],
       website,
       // iconPath is optional; .ico works on Windows
       iconPath: process.platform === 'win32' ? path.join(app.getAppPath(), 'icons', 'icon.ico') : undefined,
       credits: [
-        'Lightweight S3 bucket/object browser',
+  'S3 Browser-lite — Lightweight S3 bucket/object browser',
         '',
         'Stack:',
         `- Electron: ${process.versions.electron}`,

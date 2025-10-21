@@ -53,7 +53,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.pkg.outputs.version }}-build.${{ github.run_number }}
-          name: S3Browser v${{ steps.pkg.outputs.version }} (build ${{ github.run_number }})
+          name: S3 Browser-lite v${{ steps.pkg.outputs.version }} (build ${{ github.run_number }})
           draft: false
           prerelease: false
           generate_release_notes: true
