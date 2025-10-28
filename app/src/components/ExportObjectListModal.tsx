@@ -60,7 +60,7 @@ export default function ExportObjectListModal({ isOpen, onClose, bucket, current
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={() => !isExporting && onClose()} />
+      <div className="absolute inset-0 overlay-bg" onClick={() => !isExporting && onClose()} />
       <div className="relative z-10 w-[480px] max-w-[95vw] rounded menu-bg border border-default p-4 shadow">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-base">Export Object List</h2>

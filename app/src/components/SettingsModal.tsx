@@ -17,7 +17,7 @@ export default function SettingsModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={onKey}>
-  <div className="absolute inset-0 bg-black/40" onClick={closeSettings} />
+  <div className="absolute inset-0 overlay-bg" onClick={closeSettings} />
   <div className="relative menu-bg border border-default rounded shadow-xl w-[560px] max-w-[95vw] p-4">
         <div className="text-lg font-semibold mb-2">Settings</div>
 

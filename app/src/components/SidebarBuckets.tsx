@@ -386,7 +386,12 @@ export default function SidebarBuckets() {
       )}
 
       {/* Mounted locations with sticky header */}
-      {connected && settings?.mounts && settings.mounts.length > 0 && (
+      {connected && settings?.mounts && settings.mounts.length > 0 && (() => {
+        const filteredMounts = settings.mounts.filter((m: { bucket: string; prefix?: string }) => {
+          const label = m.prefix ? `${m.bucket}/${m.prefix}` : m.bucket
+          return label.toLowerCase().includes(bucketFilter.trim().toLowerCase())
+        })
+        return (
         <>
           {/* Sticky header - sticks to bottom of viewport, then scrolls up with content */}
           <div className="sticky bottom-0 z-20 mt-3">
@@ -400,8 +405,10 @@ export default function SidebarBuckets() {
               <div className="px-3 py-2 flex items-center gap-2 text-xs uppercase tracking-wide opacity-80">
                 <PinIcon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 <span>Mounted</span>
-                {Array.isArray(settings?.mounts) && settings.mounts.length > 0 && (
-                  <span className="ml-1 opacity-60">({settings.mounts.length})</span>
+                {filteredMounts.length > 0 && (
+                  <span className="ml-1 opacity-60">
+                    ({filteredMounts.length}{filteredMounts.length !== settings.mounts.length ? `/${settings.mounts.length}` : ''})
+                  </span>
                 )}
                 <span className="ml-auto opacity-60">↓</span>
               </div>
@@ -417,12 +424,17 @@ export default function SidebarBuckets() {
             </div>
             <ul
             ref={mountedListRef}
-            className="text-sm outline-none"
+            className="text-sm outline-none overflow-x-hidden"
             role="listbox"
             aria-label="Mounted locations"
             tabIndex={0}
             onKeyDown={(e) => {
-              const items = (settings?.mounts || []).map((m: any, idx: number) => `${m.bucket}:${m.prefix ?? ''}`)
+              const items = (settings?.mounts || [])
+                .filter((m: any) => {
+                  const label = m.prefix ? `${m.bucket}/${m.prefix}` : m.bucket
+                  return label.toLowerCase().includes(bucketFilter.trim().toLowerCase())
+                })
+                .map((m: any) => `${m.bucket}:${m.prefix ?? ''}`)
               const current = navSelection?.type === 'mount' ? navSelection.id : undefined
               handleListKey(e, items, current, (id) => {
                 const [b, p] = id.split(':')
@@ -432,7 +444,12 @@ export default function SidebarBuckets() {
               })
             }}
           >
-            {settings.mounts.map((m: { bucket: string; prefix?: string }, idx: number) => {
+            {settings.mounts
+              .filter((m: { bucket: string; prefix?: string }) => {
+                const label = m.prefix ? `${m.bucket}/${m.prefix}` : m.bucket
+                return label.toLowerCase().includes(bucketFilter.trim().toLowerCase())
+              })
+              .map((m: { bucket: string; prefix?: string }, idx: number) => {
               const id = `${m.bucket}:${m.prefix ?? ''}`
               const isActive = navSelection?.type === 'mount' && navSelection?.id === id
               const hover = !isActive ? 'row-hover' : ''
@@ -491,7 +508,8 @@ export default function SidebarBuckets() {
           )}
           </div>
         </>
-      )}
+        )
+      })()}
       
       <CreateBucketModal
         isOpen={showCreateBucket}

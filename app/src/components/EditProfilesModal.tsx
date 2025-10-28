@@ -337,7 +337,7 @@ export default function EditProfilesModal({ isOpen, onClose, onSaved }: Props) {
         }
       }}
     >
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 overlay-bg" onClick={onClose} />
       <div className="relative menu-bg border border-default rounded shadow-xl w-[900px] h-[600px] max-w-[96vw] max-h-[96vh] p-4 flex flex-col">
         <div className="flex items-center gap-3 mb-2">
           <div className="text-lg font-semibold">AWS Profiles</div>
@@ -564,7 +564,7 @@ function EditProfileEntryModal({ name, initial, sourceOptions = [], onCancel, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={(e) => e.stopPropagation()}>
-      <div className="absolute inset-0 bg-black/40" onClick={() => !busy && onCancel()} />
+      <div className="absolute inset-0 overlay-bg" onClick={() => !busy && onCancel()} />
       <div className="relative menu-bg border border-default rounded shadow-xl w-[720px] max-w-[95vw] p-4">
         <div className="text-lg font-semibold mb-3">Edit “{name}”</div>
         <div className="mb-3 flex gap-4 items-center text-sm">
@@ -659,7 +659,7 @@ function CreateProfileModal({ existing, sourceOptions = [], onCancel, onCreate }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={(e) => e.stopPropagation()}>
-      <div className="absolute inset-0 bg-black/40" onClick={() => !busy && onCancel()} />
+      <div className="absolute inset-0 overlay-bg" onClick={() => !busy && onCancel()} />
       <div className="relative menu-bg border border-default rounded shadow-xl w-[720px] max-w-[95vw] p-4">
         <div className="text-lg font-semibold mb-3">New profile</div>
         <div className="mb-3">
@@ -740,7 +740,7 @@ function RenameProfileModal({ from, existing, onCancel, onRename }: { from: stri
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onKeyDown={(e) => e.stopPropagation()}>
-      <div className="absolute inset-0 bg-black/40" onClick={() => !busy && onCancel()} />
+      <div className="absolute inset-0 overlay-bg" onClick={() => !busy && onCancel()} />
       <div className="relative menu-bg border border-default rounded shadow-xl w-[520px] max-w-[95vw] p-4">
         <div className="text-lg font-semibold mb-3">Rename profile</div>
         <div className="mb-3">
