@@ -113,7 +113,7 @@
   .input-theme::placeholder { color: var(--color-placeholder); opacity: 0.9; }
 
   /* Button utilities */
-  .btn { padding: 0.375rem 0.75rem; font-size: 0.875rem; border-radius: 0.375rem; line-height: 1.25rem; }
+  .btn { padding: 0.375rem 0.75rem; font-size: 0.875rem; border-radius: 0.375rem; line-height: 1.25rem; cursor: pointer; }
   .btn-secondary { background-color: var(--color-header); color: var(--color-fg); border: 1px solid var(--color-border); }
   .btn-secondary:hover { background-color: var(--color-hover); }
   .btn-primary { background-color: #0e639c; color: #ffffff; }
@@ -139,6 +139,7 @@
     margin-right: 2px;
     min-width: 100px;
     max-width: 220px;
+    cursor: pointer;
   }
   
   .tab-btn:hover:not(.tab-btn-active) {
