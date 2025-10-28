@@ -405,7 +405,12 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
     copyTimer.current = window.setTimeout(() => { setCopied(false); setTooltipPos(null) }, 1200) as unknown as number
   }
 
+  // Reset all state when changing folders to ensure clean slate
   React.useEffect(() => {
+    // Abort any ongoing scan
+    abortRef.current = true
+    
+    // Reset all state
     setScanToken(undefined)
     setTotalObjects(0)
     setTotalBytes(0)
@@ -416,8 +421,10 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
     setError(undefined)
     setPagesScanned(0)
     setAutoStopped(false)
-    abortRef.current = false
     uniqueFoldersRef.current = new Set()
+    
+    // Clear abort flag after state reset
+    abortRef.current = false
   }, [prefix, bucket])
 
   async function scanNextPage() {
@@ -485,7 +492,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
     let mounted = true
     ;(async () => {
     // Avoid overlapping with manual scans
-      if (isScanning) return
+      if (isScanning || abortRef.current) return
       setIsScanning(true)
       setError(undefined)
       setAutoStopped(false)
@@ -495,7 +502,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
         for (let i = 0; i < limit; i++) {
           if (!mounted || abortRef.current) break
           const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix, token })
-          if (!mounted) break
+          if (!mounted || abortRef.current) break
           // Use files for displayable objects
           setTotalObjects(prev => prev + (res.objects || 0))
           setTotalFiles(prev => prev + (res.files || 0))
@@ -527,12 +534,12 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
           setScanToken(token)
           if (!token) break
         }
-        if (token) {
+        if (token && !abortRef.current) {
           // More remains -> show as lower bound until user continues
           setAutoStopped(true)
         }
       } catch (e) {
-        if (mounted) setError((e as Error)?.message || 'Failed to scan folder')
+        if (mounted && !abortRef.current) setError((e as Error)?.message || 'Failed to scan folder')
       } finally {
         if (mounted) setIsScanning(false)
       }
@@ -553,6 +560,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
       let token = scanToken
       while (token && !abortRef.current) {
         const res = await (window as any).api.s3.folderStatsPage({ bucket, prefix, token })
+        if (abortRef.current) break
         setTotalObjects(prev => prev + (res.objects || 0))
         setTotalFiles(prev => prev + (res.files || 0))
         if (Array.isArray(res.keys)) {
@@ -583,14 +591,14 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
         setScanToken(token)
       }
     } catch (e) {
-      setError((e as Error)?.message || 'Failed to scan folder')
+      if (!abortRef.current) setError((e as Error)?.message || 'Failed to scan folder')
     } finally {
       setIsScanning(false)
     }
   }
 
   return (
-    <div className="p-3 text-sm">
+    <div className="p-3 text-sm flex flex-col h-full">
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 items-start">
         {/* Name with copy icon */}
         <div className="flex items-start gap-1 min-w-0">
@@ -631,27 +639,31 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
   <div><span className="opacity-70">Total objects:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFiles.toLocaleString()}</div>
         <div><span className="opacity-70">Total folders:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFolders.toLocaleString()}</div>
         <div><span className="opacity-70">Total size:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{formatSize(totalBytes)}</div>
-        <div className="col-span-2 flex flex-wrap items-center gap-2 mt-2">
-          <div className="opacity-60">Pages scanned: {pagesScanned}</div>
-          {error && <div className="alert alert-error">{error}</div>}
-          <div className="ml-auto flex items-center gap-2">
+      </div>
+      
+      {/* Scanning controls - locked to bottom */}
+      <div className="pt-2 mt-auto" style={{ borderTop: '1px solid rgba(128, 128, 128, 0.15)' }}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="opacity-60 min-w-[140px]">Pages scanned: {pagesScanned}</div>
+          <div className="flex items-center gap-2 flex-shrink-0">
             {scanToken && !isScanning && !isAborted && (
               <button onClick={continueToCompletion} className="btn btn-secondary text-xs cursor-pointer">Continue collecting</button>
             )}
             {(scanToken || isScanning) && !isAborted && (
               <button onClick={abortScan} className="btn text-xs cursor-pointer" style={{ backgroundColor: 'rgba(220,38,38,0.12)', color: 'var(--color-fg)' }}>Stop</button>
             )}
-            {!scanToken && !isScanning && (
-              <button onClick={() => { setScanToken(undefined); setTotalObjects(0); setTotalFiles(0); setTotalFolders(0); setTotalBytes(0); setPagesScanned(0); setAutoStopped(false); abortRef.current = false; return scanNextPage(); }} className="btn btn-secondary text-xs cursor-pointer">Rescan</button>
+            {!scanToken && !isScanning && !isAborted && (
+              <button onClick={() => { setScanToken(undefined); setTotalObjects(0); setTotalFiles(0); setTotalFolders(0); setTotalBytes(0); setPagesScanned(0); setAutoStopped(false); abortRef.current = false; setIsAborted(false); return scanNextPage(); }} className="btn btn-secondary text-xs cursor-pointer">Rescan</button>
             )}
             {isAborted && (
               <>
-                <span className="opacity-70">Stopped</span>
+                <span className="opacity-70 text-xs">Stopped</span>
                 <button onClick={() => { setIsAborted(false); abortRef.current = false; if (scanToken) { continueToCompletion() } else { scanNextPage() } }} className="btn btn-secondary text-xs cursor-pointer">Resume</button>
               </>
             )}
           </div>
         </div>
+        {error && <div className="alert alert-error mt-2">{error}</div>}
       </div>
     </div>
   )
