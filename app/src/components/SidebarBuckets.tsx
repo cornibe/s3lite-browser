@@ -28,10 +28,13 @@ export default function SidebarBuckets() {
   const [mountMenu, setMountMenu] = useState(null as { idx: number; x: number; y: number } | null)
   const [editMount, setEditMount] = useState(null as { idx: number; bucket: string; prefix?: string } | null)
   const mountMenuRef = useRef(null as HTMLDivElement | null)
+  // Scrolling/anchor refs
+  const containerRef = useRef(null as HTMLDivElement | null)
   const bucketListRef = useRef(null as HTMLUListElement | null)
   const bucketItemRefs = useRef(new Map<string, HTMLButtonElement>())
   const mountedListRef = useRef(null as HTMLUListElement | null)
   const mountedItemRefs = useRef(new Map<string, HTMLButtonElement>())
+  const mountedHeaderRef = useRef(null as HTMLDivElement | null)
   // Profiles at the top of sidebar
   useEffect(() => { void refreshProfiles() }, [])
   // Persist profile collapsed state
@@ -137,6 +140,17 @@ export default function SidebarBuckets() {
     }
   }, [navSelection])
 
+  const scrollToMounted = () => {
+    const c = containerRef.current
+    const m = mountedHeaderRef.current
+    if (!c || !m) return
+    try {
+      c.scrollTo({ top: Math.max(0, m.offsetTop - 8), behavior: 'smooth' })
+    } catch {
+      c.scrollTop = Math.max(0, m.offsetTop - 8)
+    }
+  }
+
   // Keyboard navigation helper for lists
   function handleListKey(e: any, items: string[], currentId: string | undefined, onSelect: (id: string) => void) {
     if (items.length === 0) return
@@ -199,7 +213,7 @@ export default function SidebarBuckets() {
   }, [profiles])
 
   return (
-    <div className={`h-full overflow-y-auto bg-header text-app`}>
+    <div ref={containerRef} className={`relative h-full overflow-y-auto bg-header text-app`}>
   <div className={`px-3 py-2 border-b border-default space-y-2`}>
         {/* Profile header: collapsible */}
         <div
@@ -371,16 +385,37 @@ export default function SidebarBuckets() {
         )
       )}
 
-      {/* Separator and Mounted locations */}
+      {/* Mounted locations with sticky header */}
       {connected && settings?.mounts && settings.mounts.length > 0 && (
-        <div className="mt-3">
-          {/* horizontal separator with vertical accent line */}
-          <div className="relative">
-            <div className="border-t border-default" />
-            <div className="absolute left-0 top-0 h-full border-l border-default opacity-60" style={{ height: '100%' }} />
+        <>
+          {/* Sticky header - sticks to bottom of viewport, then scrolls up with content */}
+          <div className="sticky bottom-0 z-20 mt-3">
+            <button
+              type="button"
+              onClick={scrollToMounted}
+              className="w-full border-t border-default bg-header hover:brightness-95 focus:outline-none shadow-[0_-2px_8px_rgba(0,0,0,0.1)]"
+              title="Jump to Mounted sections"
+              aria-label="Jump to Mounted sections"
+            >
+              <div className="px-3 py-2 flex items-center gap-2 text-xs uppercase tracking-wide opacity-80">
+                <PinIcon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Mounted</span>
+                {Array.isArray(settings?.mounts) && settings.mounts.length > 0 && (
+                  <span className="ml-1 opacity-60">({settings.mounts.length})</span>
+                )}
+                <span className="ml-auto opacity-60">↓</span>
+              </div>
+            </button>
           </div>
-          <div className="px-3 pt-3 pb-2 text-xs uppercase opacity-70 tracking-wide">Mounted</div>
-          <ul
+          
+          {/* Mounted section content */}
+          <div ref={mountedHeaderRef}>
+            {/* horizontal separator with vertical accent line */}
+            <div className="relative">
+              <div className="border-t border-default" />
+              <div className="absolute left-0 top-0 h-full border-l border-default opacity-60" style={{ height: '100%' }} />
+            </div>
+            <ul
             ref={mountedListRef}
             className="text-sm outline-none"
             role="listbox"
@@ -454,7 +489,8 @@ export default function SidebarBuckets() {
               </button>
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
       
       <CreateBucketModal
@@ -489,6 +525,11 @@ export default function SidebarBuckets() {
           setEditMount(null)
         }}
       />
+      {/* Spacer so the last mount item isn't hidden behind sticky header */}
+      {connected && settings?.mounts && settings.mounts.length > 0 && (
+        <div aria-hidden className="h-10" />
+      )}
+
       <EditProfilesModal
         isOpen={showEditProfiles}
         onClose={() => { setShowEditProfiles(false); try { closeProfiles() } catch {} }}
