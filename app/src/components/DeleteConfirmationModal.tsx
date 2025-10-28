@@ -46,7 +46,7 @@ export default function DeleteConfirmationModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="fixed inset-0 overlay-bg flex items-center justify-center z-50">
   <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default">
         <h2 className="text-lg font-semibold mb-4 text-red-600 dark:text-red-400">
           {title}

@@ -40,7 +40,7 @@ export default function MountLocationModal({ isOpen, onClose, onSubmit, initialB
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 dark:bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 overlay-bg flex items-center justify-center z-50">
       <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default shadow-xl">
     <h2 className="text-lg font-semibold mb-3">{mode === 'edit' ? 'Edit mounted location' : 'Mount S3 location'}</h2>
         <p className="text-sm opacity-80 mb-4">

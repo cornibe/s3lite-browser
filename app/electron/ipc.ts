@@ -48,6 +48,20 @@ export function registerIpc() {
       throw e
     }
   })
+  ipcMain.handle(IpcChannels.S3_LIST_OBJECTS_RECURSIVE, async (_e, params) => {
+    const t = Date.now()
+    try {
+      const out = await s3.listObjectsRecursive(params)
+      getLogger().debug('ipc', 's3:listObjectsRecursive ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', objects: out.objects.length, truncated: Boolean(out.nextToken) })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjectsRecursive', bucket: params.bucket, prefix: params.prefix ?? '', status: 'ok', durationMs: Date.now() - t })) } catch {}
+      return out
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to list objects recursively'
+      getLogger().warn('ipc', 's3:listObjectsRecursive error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', error: msg })
+  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjectsRecursive', bucket: params.bucket, prefix: params.prefix ?? '', status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
+      throw e
+    }
+  })
   ipcMain.handle(IpcChannels.S3_FOLDER_STATS_PAGE, async (_e, params) => {
     const t = Date.now()
     try {

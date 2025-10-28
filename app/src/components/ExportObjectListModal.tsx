@@ -26,21 +26,55 @@ export default function ExportObjectListModal({ isOpen, onClose, bucket, current
     setIsExporting(true)
     setError(null)
     try {
-      // Build rows. For folders, we just include their prefix as path; size/storage class are blank.
-      const rows = selection.map(item => {
-        const obj: Record<string, any> = {}
-        if (fields.includes('path')) {
-          if (item.type === 'folder') obj.path = `s3://${bucket}/${item.data.prefix}`
-          else obj.path = `s3://${bucket}/${item.data.key}`
+      // Build rows. For folders, recursively fetch all objects within them.
+      const rows: Array<Record<string, any>> = []
+      
+      for (const item of selection) {
+        if (item.type === 'object') {
+          // Simple object - add directly
+          const obj: Record<string, any> = {}
+          if (fields.includes('path')) {
+            obj.path = `s3://${bucket}/${item.data.key}`
+          }
+          if (fields.includes('size')) {
+            obj.size = item.data.size
+          }
+          if (fields.includes('storageClass')) {
+            obj.storageClass = item.data.storageClass || ''
+          }
+          rows.push(obj)
+        } else {
+          // Folder - recursively fetch all objects with full metadata
+          let token: string | undefined = undefined
+          do {
+            const res = await (window as any).api.s3.listObjectsRecursive({ 
+              bucket, 
+              prefix: item.data.prefix, 
+              token,
+              maxKeys: 2000
+            })
+            
+            // Add each object from this page
+            if (res.objects && Array.isArray(res.objects)) {
+              for (const objData of res.objects) {
+                const obj: Record<string, any> = {}
+                if (fields.includes('path')) {
+                  obj.path = `s3://${bucket}/${objData.key}`
+                }
+                if (fields.includes('size')) {
+                  obj.size = objData.size
+                }
+                if (fields.includes('storageClass')) {
+                  obj.storageClass = objData.storageClass || ''
+                }
+                rows.push(obj)
+              }
+            }
+            
+            token = res.nextToken
+          } while (token)
         }
-        if (fields.includes('size')) {
-          obj.size = item.type === 'object' ? item.data.size : ''
-        }
-        if (fields.includes('storageClass')) {
-          obj.storageClass = item.type === 'object' ? (item.data.storageClass || '') : ''
-        }
-        return obj
-      })
+      }
   const defaultName = selection.length > 1 ? 'objects' : (selection[0]?.type === 'folder' ? selection[0].data.prefix.split('/').filter(Boolean).slice(-1)[0] : selection[0]?.type === 'object' ? selection[0].data.key.split('/').slice(-1)[0] : 'objects')
   const d = new Date(); const pad = (n: number) => n.toString().padStart(2,'0')
   const dateStamp = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
@@ -60,7 +94,7 @@ export default function ExportObjectListModal({ isOpen, onClose, bucket, current
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={() => !isExporting && onClose()} />
+      <div className="absolute inset-0 overlay-bg" onClick={() => !isExporting && onClose()} />
       <div className="relative z-10 w-[480px] max-w-[95vw] rounded menu-bg border border-default p-4 shadow">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-base">Export Object List</h2>

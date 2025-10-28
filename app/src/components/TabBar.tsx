@@ -34,7 +34,7 @@ export default function TabBar() {
 
   return (
     <div className="flex items-center gap-1 px-2 py-1 border-b border-default bg-header text-app select-none">
-      <div className="flex items-center gap-1 overflow-auto" role="tablist" aria-label="Tabs">
+      <div className="flex items-center overflow-x-auto overflow-y-hidden" role="tablist" aria-label="Tabs">
         {(() => {
           // Keep sequence per profile for numbering (1), (2), ...
           const seq = new Map<string, number>()
@@ -54,38 +54,37 @@ export default function TabBar() {
             }
 
             return (
-              <div key={t.id} className={`group flex items-center max-w-[22rem] text-sm`} role="presentation">
-                <div
-                  onClick={() => activateTab(t.id)}
-                  className={`tab-btn ${active ? 'tab-btn-active' : ''} flex items-center gap-1 truncate`}
-                  role="tab"
-                  aria-selected={active}
-                  title={title}
-                >
-                  <span className="truncate">{title}</span>
-                  {items.length > 1 && (
-                    <button
-                      className="p-0.5 opacity-70 hover:opacity-100"
-                      onClick={(e) => { e.stopPropagation(); closeTab(t.id) }}
-                      aria-label="Close tab"
-                      title="Close"
-                    >
-                      <CloseIcon />
-                    </button>
-                  )}
-                </div>
+              <div
+                key={t.id}
+                onClick={() => activateTab(t.id)}
+                className={`tab-btn ${active ? 'tab-btn-active' : ''} group flex items-center gap-2 cursor-pointer`}
+                role="tab"
+                aria-selected={active}
+                title={title}
+              >
+                <span className="truncate flex-1 min-w-0">{title}</span>
+                {items.length > 1 && (
+                  <button
+                    className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity flex-shrink-0"
+                    onClick={(e) => { e.stopPropagation(); closeTab(t.id) }}
+                    aria-label="Close tab"
+                    title="Close"
+                  >
+                    <CloseIcon />
+                  </button>
+                )}
               </div>
             )
           })
         })()}
         {/* New Tab button placed immediately after the last tab */}
         <button
-          className="tab-btn inline-flex items-center justify-center"
+          className="inline-flex items-center justify-center p-1.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted hover:text-app"
           onClick={() => newTab()}
           aria-label="New tab"
           title="New tab"
         >
-          <PlusIcon />
+          <PlusIcon className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
