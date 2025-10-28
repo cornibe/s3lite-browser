@@ -119,6 +119,36 @@ export async function folderStatsPage(params: FolderStatsPageParams): Promise<Fo
   }
 }
 
+// List all objects recursively under a prefix with full metadata (paginated)
+export async function listObjectsRecursive(params: ListObjectsParams): Promise<ListObjectsResult> {
+  const c = ensureClient()
+  const start = Date.now()
+  try {
+    const out = await c.send(new ListObjectsV2Command({
+      Bucket: params.bucket,
+      Prefix: params.prefix ?? '',
+      ContinuationToken: params.token,
+      MaxKeys: params.maxKeys ?? 2000
+      // No Delimiter to include all nested objects recursively
+    }))
+    const objects = (out.Contents ?? [])
+      .filter(o => (o.Key ?? '').length > 0 && !(o.Key!.endsWith('/') && (o.Size ?? 0) === 0))
+      .map(o => ({
+        key: o.Key!,
+        size: o.Size ?? 0,
+        lastModified: o.LastModified ? new Date(o.LastModified).toISOString() : undefined,
+        etag: o.ETag ?? undefined,
+        storageClass: o.StorageClass ?? undefined
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key))
+    const nextToken = out.IsTruncated ? out.NextContinuationToken : undefined
+    getLogger().debug('aws', 'listObjectsRecursive', { bucket: params.bucket, prefix: params.prefix ?? '', durationMs: Date.now() - start, objects: objects.length, truncated: Boolean(nextToken) })
+    return { folders: [], objects, nextToken }
+  } catch (err) {
+    throw toFriendlyError(`List Objects Recursively in s3://${params.bucket}/${params.prefix ?? ''}`, err)
+  }
+}
+
 function parseIni(content: string) {
   const sections: Record<string, Record<string, string>> = {}
   let current: string | null = null

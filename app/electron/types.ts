@@ -169,6 +169,7 @@ export interface RendererAPI {
     init(params: S3InitParams): Promise<{ ok: true } | { ok: false; error: string }>
     listBuckets(): Promise<string[]>
     listObjects(params: ListObjectsParams): Promise<ListObjectsResult>
+    listObjectsRecursive(params: ListObjectsParams): Promise<ListObjectsResult>
     folderStatsPage(params: FolderStatsPageParams): Promise<FolderStatsPageResult>
     listProfiles(): Promise<ProfileInfo[]>
     setAwsFiles(params: { credentialsFile?: string; configFile?: string }): Promise<{ ok: true }>
@@ -220,6 +221,7 @@ export const IpcChannels = {
   S3_INIT: 's3:init',
   S3_LIST_BUCKETS: 's3:listBuckets',
   S3_LIST_OBJECTS: 's3:listObjects',
+  S3_LIST_OBJECTS_RECURSIVE: 's3:listObjectsRecursive',
   S3_FOLDER_STATS_PAGE: 's3:folderStatsPage',
   S3_GET_OBJECT_PREVIEW: 's3:getObjectPreview',
   S3_LIST_PROFILES: 's3:listProfiles',
