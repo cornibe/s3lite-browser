@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   tag:
@@ -65,6 +64,17 @@ jobs:
           echo "tag=v$next_version" >> $GITHUB_OUTPUT
           echo "Determined next version: v$next_version (base $base_version)"
 
+      - name: Bump app/package.json version and commit [skip ci]
+        if: steps.headtag.outputs.head_is_tagged == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          next="${{ steps.ver.outputs.next }}"
+          node -e 'const fs=require("fs");const p="./app/package.json";const j=JSON.parse(fs.readFileSync(p,"utf8"));j.version="'"$next"'";fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");'
+          git add app/package.json
+          git commit -m "[skip ci] chore: bump version to v${{ steps.ver.outputs.next }}"
+          git push
+
       - name: Create and push tag
         if: steps.headtag.outputs.head_is_tagged == 'false'
         env:
@@ -74,19 +84,6 @@ jobs:
           echo "Creating tag $tag for commit $(git rev-parse --short HEAD)"
           git tag -a "$tag" -m "Automated tag for main: $tag"
           git push origin "$tag"
-
-      - name: Trigger Release Windows workflow
-        if: steps.headtag.outputs.head_is_tagged == 'false'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag=${{ steps.ver.outputs.tag }}
-          echo "Dispatching Release Windows workflow for $tag"
-          curl -sSf -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-win.yml/dispatches \
-            -d '{"ref":"'"$tag"'"}'
 
       - name: Summary
         run: |
