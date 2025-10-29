@@ -43,7 +43,7 @@ export default function CreateBucketModal({ isOpen, onClose, onCreateBucket }: C
 
   return (
     <div className="fixed inset-0 overlay-bg flex items-center justify-center z-50">
-  <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default">
+  <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default shadow-xl">
         <h2 className="text-lg font-semibold mb-4">Create New Bucket</h2>
         
         <form onSubmit={handleSubmit}>

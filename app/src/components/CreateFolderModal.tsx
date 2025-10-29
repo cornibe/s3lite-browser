@@ -41,7 +41,7 @@ export default function CreateFolderModal({ isOpen, onClose, onCreateFolder, cur
 
   return (
     <div className="fixed inset-0 overlay-bg flex items-center justify-center z-50">
-  <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default">
+  <div className="menu-bg rounded-lg p-6 w-96 max-w-[90vw] border border-default shadow-xl">
         <h2 className="text-lg font-semibold mb-4">Create New Folder</h2>
         
         <form onSubmit={handleSubmit}>
