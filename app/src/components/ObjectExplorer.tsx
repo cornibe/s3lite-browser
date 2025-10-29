@@ -1166,7 +1166,7 @@ export default function ObjectExplorer() {
               >×</button>
             )}
           </div>
-    {prefix && <button className="text-xs underline cursor-pointer link-accent" onClick={() => { trace('ui', 'up'); setPrefix(parentPrefix) }}>Up</button>}
+  {/* Removed explicit Up link next to the filter input */}
   {/* Hidden file input for uploads */}
   <input ref={uploadInputRef} type="file" multiple className="hidden" onChange={(e) => onUploadFilesSelected(e.target.files)} />
         </div>
