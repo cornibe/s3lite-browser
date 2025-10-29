@@ -285,7 +285,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
         {/* Last modified (right) */}
         <div className={rowClass}>
           <span className={labelClass}><span>Last modified:</span></span>
-          <span className={valueClass}>{details?.lastModified ? new Date(details.lastModified).toLocaleString() : '-'}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{details?.lastModified ? new Date(details.lastModified).toLocaleString() : '-'}</span>
         </div>
 
         {/* Filename (left) with copy icon */}
@@ -308,7 +308,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
         {/* File type (right) */}
         <div className={rowClass}>
           <span className={labelClass}><span>File type:</span></span>
-          <span className={valueClass}>{filetype}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{filetype}</span>
         </div>
 
         {/* S3 URI (left) with copy icon left of label; show even if details missing */}
@@ -332,7 +332,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
         {/* Storage class (right) */}
         <div className={rowClass}>
           <span className={labelClass}><span>Storage class:</span></span>
-          <span className={valueClass}>{details?.storageClass ?? ''}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{details?.storageClass ?? ''}</span>
         </div>
 
         {/* ETag (left) with copy */}
@@ -356,7 +356,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
         {/* Size (right) */}
         <div className={rowClass}>
           <span className={labelClass}><span>Size:</span></span>
-          <span className={valueClass}>{formatSize(details?.size || 0)}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{formatSize(details?.size || 0)}</span>
         </div>
       </div>
 
@@ -597,12 +597,16 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
     }
   }
 
+  const labelClass = "opacity-70 select-none w-20 flex items-center gap-1 text-xs"
+  const valueClass = "min-w-0"
+  const rowClass = "flex items-start gap-1 min-w-0"
+
   return (
     <div className="p-3 text-sm flex flex-col h-full">
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 items-start">
         {/* Name with copy icon */}
-        <div className="flex items-start gap-1 min-w-0">
-          <span className="opacity-70 select-none w-20 flex items-center gap-1 text-xs">
+        <div className={rowClass}>
+          <span className={labelClass}>
             <button
               ref={nameBtnRef}
               className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5"
@@ -614,13 +618,17 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
             </button>
             <span>Name:</span>
           </span>
-          <span className="font-mono break-all min-w-0">{name}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{name}</span>
         </div>
-        <div><span className="opacity-70">Storage class:</span> <span className="opacity-80">-</span></div>
+        {/* Storage class (right) */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>Storage class:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>-</span>
+        </div>
 
         {/* S3 URI with copy icon */}
-        <div className="flex items-start gap-1 min-w-0">
-          <span className="opacity-70 select-none w-20 flex items-center gap-1 text-xs">
+        <div className={rowClass}>
+          <span className={labelClass}>
             <button
               ref={uriBtnRef}
               className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5 disabled:opacity-40"
@@ -633,18 +641,32 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
             </button>
             <span>S3 URI:</span>
           </span>
-          <span className="font-mono break-all min-w-0">{s3Uri}</span>
-  </div>
-  {/* Display files under the label "Total objects" */}
-  <div><span className="opacity-70">Total objects:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFiles.toLocaleString()}</div>
-        <div><span className="opacity-70">Total folders:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{totalFolders.toLocaleString()}</div>
-        <div><span className="opacity-70">Total size:</span> {scanToken && (autoStopped || isScanning) ? '>' : ''}{formatSize(totalBytes)}</div>
+          <span className={`font-mono break-all ${valueClass}`}>{s3Uri}</span>
+        </div>
+
+        {/* Display files under the label "Total objects" */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>Total objects:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>{(scanToken && (autoStopped || isScanning) ? '>' : '') + totalFiles.toLocaleString()}</span>
+        </div>
+
+        {/* Total folders */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>Total folders:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>{(scanToken && (autoStopped || isScanning) ? '>' : '') + totalFolders.toLocaleString()}</span>
+        </div>
+
+        {/* Total size */}
+        <div className={rowClass}>
+          <span className={labelClass}><span>Total size:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>{(scanToken && (autoStopped || isScanning) ? '>' : '') + formatSize(totalBytes)}</span>
+        </div>
       </div>
       
       {/* Scanning controls - locked to bottom */}
-      <div className="pt-2 mt-auto" style={{ borderTop: '1px solid rgba(128, 128, 128, 0.15)' }}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="opacity-60 min-w-[140px]">Pages scanned: {pagesScanned}</div>
+      <div className="pt-1 mt-auto" style={{ borderTop: '1px solid rgba(128, 128, 128, 0.15)' }}>
+        <div className="flex items-center justify-between gap-1">
+          <div className="opacity-60 min-w-[110px] text-xs leading-tight">Pages scanned: {pagesScanned}</div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {scanToken && !isScanning && !isAborted && (
               <button onClick={continueToCompletion} className="btn btn-secondary text-xs cursor-pointer">Continue collecting</button>
