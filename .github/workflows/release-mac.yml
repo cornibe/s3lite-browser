@@ -28,6 +28,22 @@ jobs:
           echo "ELECTRON_CACHE=$cacheRoot/electron" >> "$GITHUB_ENV"
           echo "ELECTRON_BUILDER_CACHE=$cacheRoot/electron-builder" >> "$GITHUB_ENV"
 
+      - name: Derive version from tag
+        if: startsWith(github.ref_name, 'v')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "Setting app version to $version"
+          node -e "const fs=require('fs');const path='package.json';const pkg=JSON.parse(fs.readFileSync(path,'utf8'));pkg.version='${version}';fs.writeFileSync(path,JSON.stringify(pkg,null,2));"
+
+      - name: Use Node.js 20 (no cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
       - name: Generate icons (PNG + ICO)
         run: |
           node scripts/write-icon.js
@@ -52,22 +68,6 @@ jobs:
           done
           iconutil -c icns "$iconset" -o icons/icon.icns
           ls -lh icons
-
-      - name: Derive version from tag
-        if: startsWith(github.ref_name, 'v')
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          echo "Setting app version to $version"
-          node -e "const fs=require('fs');const path='package.json';const pkg=JSON.parse(fs.readFileSync(path,'utf8'));pkg.version='${version}';fs.writeFileSync(path,JSON.stringify(pkg,null,2));"
-
-      - name: Use Node.js 20 (no cache)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
       - name: Build app (renderer + electron)
         run: npm run build
