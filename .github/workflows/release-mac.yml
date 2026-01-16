@@ -1,0 +1,66 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set cache env vars
+        run: |
+          cacheRoot="$RUNNER_TEMP"
+          echo "ELECTRON_CACHE=$cacheRoot/electron" >> "$GITHUB_ENV"
+          echo "ELECTRON_BUILDER_CACHE=$cacheRoot/electron-builder" >> "$GITHUB_ENV"
+
+      - name: Derive version from tag
+        if: startsWith(github.ref_name, 'v')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "Setting app version to $version"
+          node -e "const fs=require('fs');const path='package.json';const pkg=JSON.parse(fs.readFileSync(path,'utf8'));pkg.version='${version}';fs.writeFileSync(path,JSON.stringify(pkg,null,2));"
+
+      - name: Use Node.js 20 (no cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Build app (renderer + electron)
+        run: npm run build
+
+      - name: Package macOS (unsigned dmg)
+        run: npx electron-builder --mac dmg --publish always
+
+      - name: List dist output
+        run: ls -l dist
+
+      - name: Upload artifacts to Actions
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: s3-browser-macos-${{ github.ref_name }}
+          path: |
+            app/dist/*.dmg
+            app/dist/*.zip
+            app/dist/*.blockmap
+            app/dist/latest-mac.yml
+          if-no-files-found: warn

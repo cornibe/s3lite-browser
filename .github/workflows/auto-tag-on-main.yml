@@ -88,6 +88,19 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-win.yml/dispatches \
             -d '{"ref":"'"$tag"'"}'
 
+      - name: Trigger Release macOS workflow
+        if: steps.headtag.outputs.head_is_tagged == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag=${{ steps.ver.outputs.tag }}
+          echo "Dispatching Release macOS workflow for $tag"
+          curl -sSf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-mac.yml/dispatches \
+            -d '{"ref":"'"$tag"'"}'
+
       - name: Summary
         run: |
           if [ "${{ steps.headtag.outputs.head_is_tagged }}" = "true" ]; then
