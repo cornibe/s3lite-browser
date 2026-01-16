@@ -91,7 +91,6 @@
       "artifactName": "s3-browser-lite-${version}.msi",
       "shortcutName": "S3 Browser-lite"
     },
-    "afterSign": false,
     "publish": [
       {
         "provider": "github",
