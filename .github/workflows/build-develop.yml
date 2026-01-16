@@ -1,0 +1,39 @@
+name: Build (develop)
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer and electron
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: s3-browser-develop-${{ github.run_number }}
+          path: |
+            app/dist/electron/**
+            app/dist/renderer/**
+          if-no-files-found: error
