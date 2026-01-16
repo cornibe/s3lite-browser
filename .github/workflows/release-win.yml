@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-win:
     runs-on: windows-latest
@@ -16,11 +20,18 @@ jobs:
       run:
         working-directory: app
     env:
-      # electron-builder uses GH_TOKEN; GitHub Actions exposes GITHUB_TOKEN
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
-      - uses: actions/checkout@v4
-        name: Checkout
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 with npm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
 
       - name: Set cache env vars
         shell: pwsh
@@ -28,6 +39,16 @@ jobs:
           $cacheRoot = $env:RUNNER_TEMP
           "ELECTRON_CACHE=$cacheRoot\electron" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ELECTRON_BUILDER_CACHE=$cacheRoot\electron-builder" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: windows-electron-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            windows-electron-
 
       - name: Derive version from tag
         if: startsWith(github.ref_name, 'v')
@@ -40,35 +61,41 @@ jobs:
           $pkg.version = $version
           $pkg | ConvertTo-Json -Depth 20 | Out-File -FilePath $pkgPath -Encoding utf8
 
-      - name: Use Node.js 20 (no cache)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Install dependencies
         shell: pwsh
         run: |
           if (Test-Path package-lock.json) { npm ci } else { npm install }
 
+      - name: Install WiX Toolset (MSI)
+        run: choco install wixtoolset -y --no-progress
+
+      - name: Install NSIS (EXE)
+        run: choco install nsis -y --no-progress
+
       - name: Build app (renderer + electron)
         run: npm run build
 
-      - name: Package Windows (NSIS + MSI)
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Package Windows (NSIS + MSI) and publish to GitHub
         run: npx electron-builder --win nsis msi --publish always
 
       - name: List dist output
         shell: pwsh
         run: Get-ChildItem -Recurse dist | Select-Object FullName, Length
 
-      - name: Upload installers to Actions artifacts (optional)
+      - name: Upload installers to Actions artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: s3-browser-windows-${{ github.ref_name }}
+          name: s3lite-browser-windows-${{ github.ref_name }}
           path: |
             app/dist/*.exe
             app/dist/*.msi
             app/dist/latest.yml
-          if-no-files-found: warn
+            app/dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+  # Optional: add build provenance attestation once your org/repo supports it
+  # - name: Attest build provenance
+  #   uses: actions/attest-build-provenance@v1
+  #   with:
+  #     subject-path: app/dist/*

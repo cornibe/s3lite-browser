@@ -39,7 +39,7 @@ export default function EnumerationModal() {
   return createPortal(
     <div className="fixed inset-0 z-[9998]">
       <div className="absolute inset-0 overlay-bg" />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] max-w-[95vw] rounded menu-bg border border-default shadow p-4">
+  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] max-w-[95vw] rounded menu-bg border border-default shadow-xl p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="font-semibold">Adding files to queue…</div>
           <button className="btn btn-secondary text-xs" onClick={onHide}>Hide</button>
