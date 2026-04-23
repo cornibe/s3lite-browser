@@ -317,7 +317,7 @@ export default function SidebarBuckets() {
           />
           {bucketFilter && (
             <button
-              className="absolute right-1 top-1.5 h-5 w-5 rounded row-hover flex items-center justify-center"
+              className="absolute right-1 top-1.5 h-5 w-5 icon-btn icon-btn-sm"
               title="Clear"
               aria-label="Clear bucket filter"
               onClick={() => setBucketFilter('')}

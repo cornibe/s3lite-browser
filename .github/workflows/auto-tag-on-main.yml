@@ -7,11 +7,15 @@ on:
 
 permissions:
   contents: write
-  actions: write
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: false
 
 jobs:
   tag:
     name: Create version tag
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -85,32 +89,6 @@ jobs:
           echo "Creating tag $tag for commit $(git rev-parse --short HEAD)"
           git tag -a "$tag" -m "Automated tag for main: $tag"
           git push origin "$tag"
-
-      - name: Trigger Release Windows workflow
-        if: steps.headtag.outputs.head_is_tagged == 'false'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag=${{ steps.ver.outputs.tag }}
-          echo "Dispatching Release Windows workflow for $tag"
-          curl -sSf -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-win.yml/dispatches \
-            -d '{"ref":"'"$tag"'"}'
-
-      - name: Trigger Release macOS workflow
-        if: steps.headtag.outputs.head_is_tagged == 'false'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag=${{ steps.ver.outputs.tag }}
-          echo "Dispatching Release macOS workflow for $tag"
-          curl -sSf -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/release-mac.yml/dispatches \
-            -d '{"ref":"'"$tag"'"}'
       - name: Summary
         run: |
           if [ "${{ steps.headtag.outputs.head_is_tagged }}" = "true" ]; then
