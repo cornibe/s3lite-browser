@@ -11,7 +11,17 @@ type TabState = {
   navSelection?: { type: 'bucket' | 'mount'; id: string }
   selectedKey?: string
   selectedType?: 'object' | 'folder'
-  selectedDetails?: { type: 'object'; object: import('../../electron/types').S3ObjectItem } | { type: 'folder'; folder: import('../../electron/types').S3Folder }
+  selectedDetails?:
+    | { type: 'object'; object: import('../../electron/types').S3ObjectItem }
+    | { type: 'folder'; folder: import('../../electron/types').S3Folder }
+    | {
+        type: 'selection-summary'
+        totalItems: number
+        objectCount: number
+        folderCount: number
+        totalObjectSize: number
+        mixedSelection: boolean
+      }
   connected: boolean
   connectionError?: string
   isSwitchingProfile?: boolean

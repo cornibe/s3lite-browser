@@ -366,6 +366,62 @@ export default function ObjectExplorer() {
     return m
   }, [items])
 
+  const applySelectionState = (nextSet: Set<string>, preferredPrimaryKey?: string) => {
+    if (!nextSet || nextSet.size === 0) {
+      setSelected(undefined, undefined)
+      setSelectedDetails(undefined)
+      return
+    }
+
+    const primaryKey = preferredPrimaryKey && nextSet.has(preferredPrimaryKey)
+      ? preferredPrimaryKey
+      : Array.from(nextSet)[0]
+    const primaryEntry = keyToEntry.get(primaryKey)
+
+    if (!primaryEntry) {
+      setSelected(undefined, undefined)
+      setSelectedDetails(undefined)
+      return
+    }
+
+    const primaryIsObject = primaryEntry.type === 'object'
+    const primarySelectedKey = primaryIsObject ? primaryEntry.data.key : primaryEntry.data.prefix
+    setSelected(primarySelectedKey, primaryIsObject ? 'object' : 'folder')
+
+    if (nextSet.size === 1) {
+      setSelectedDetails(
+        primaryIsObject
+          ? { type: 'object', object: primaryEntry.data as S3ObjectItem }
+          : { type: 'folder', folder: primaryEntry.data as S3Folder }
+      )
+      return
+    }
+
+    let objectCount = 0
+    let folderCount = 0
+    let totalObjectSize = 0
+
+    for (const k of nextSet) {
+      const entry = keyToEntry.get(k)
+      if (!entry) continue
+      if (entry.type === 'object') {
+        objectCount += 1
+        totalObjectSize += entry.data.size || 0
+      } else {
+        folderCount += 1
+      }
+    }
+
+    setSelectedDetails({
+      type: 'selection-summary',
+      totalItems: objectCount + folderCount,
+      objectCount,
+      folderCount,
+      totalObjectSize,
+      mixedSelection: objectCount > 0 && folderCount > 0,
+    })
+  }
+
   // Helpers for filter/sort
   const getName = (it: Entry) =>
     it.type === 'folder'
@@ -484,11 +540,11 @@ export default function ObjectExplorer() {
       if (idx >= 0) {
         const it = visibleItems[idx]
         const rowKey = keyOf(it)
-        setSelectedSet(new Set([rowKey]))
+        const newSet = new Set([rowKey])
+        setSelectedSet(newSet)
         setAnchorIndex(idx)
         setFocusedIndex(idx)
-        setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
-        setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
+        applySelectionState(newSet, rowKey)
         // Scroll selected row into view
         try { rowRefs.current.get(rowKey)?.scrollIntoView({ block: 'nearest' }) } catch {}
       }
@@ -507,11 +563,11 @@ export default function ObjectExplorer() {
           if (idx >= 0) {
             const it = visibleItems[idx]
             const rowKey = keyOf(it)
-            setSelectedSet(new Set([rowKey]))
+            const newSet = new Set([rowKey])
+            setSelectedSet(newSet)
             setAnchorIndex(idx)
             setFocusedIndex(idx)
-            setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
-            setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
+            applySelectionState(newSet, rowKey)
             try { rowRefs.current.get(rowKey)?.scrollIntoView({ block: 'nearest' }) } catch {}
           }
         }
@@ -534,13 +590,14 @@ export default function ObjectExplorer() {
         setSelectedSet(newSet)
         setFocusedIndex(next)
         setAnchorIndex(from)
+        applySelectionState(newSet, keyOf(it))
       } else {
-        setSelectedSet(new Set([keyOf(it)]))
+        const newSet = new Set([keyOf(it)])
+        setSelectedSet(newSet)
         setAnchorIndex(next)
         setFocusedIndex(next)
+        applySelectionState(newSet, keyOf(it))
       }
-      setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
-      setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
       e.preventDefault()
     } else if (e.key === 'ArrowUp') {
       const prev = Math.max((currentIdx < 0 ? 0 : currentIdx - 1), 0)
@@ -553,13 +610,14 @@ export default function ObjectExplorer() {
         setSelectedSet(newSet)
         setFocusedIndex(prev)
         setAnchorIndex(from)
+        applySelectionState(newSet, keyOf(it))
       } else {
-        setSelectedSet(new Set([keyOf(it)]))
+        const newSet = new Set([keyOf(it)])
+        setSelectedSet(newSet)
         setAnchorIndex(prev)
         setFocusedIndex(prev)
+        applySelectionState(newSet, keyOf(it))
       }
-      setSelected(it.type === 'object' ? it.data.key : it.data.prefix, it.type)
-      setSelectedDetails(it.type === 'object' ? { type: 'object', object: (it as any).data } : { type: 'folder', folder: (it as any).data })
       e.preventDefault()
     } else if (e.key === 'Enter') {
       const idx = Math.max(currentIdx, 0)
@@ -1063,7 +1121,7 @@ export default function ObjectExplorer() {
             <div className="relative">
               <button
                 ref={copyBtnRef}
-                className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-1 row-hover transition-colors"
+                className="icon-btn icon-btn-md"
                 title="Copy S3 path"
                 onClick={async () => {
                   const uri = `s3://${bucket}${prefix ? `/${prefix}` : '/'}`
@@ -1161,7 +1219,7 @@ export default function ObjectExplorer() {
             {objectFilter && (
               <button
                 onClick={() => setObjectFilter('')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted hover:text-app"
+                className="absolute right-1 top-1/2 -translate-y-1/2 icon-btn icon-btn-sm"
                 aria-label="Clear filter"
               >×</button>
             )}
@@ -1280,7 +1338,7 @@ export default function ObjectExplorer() {
                     <th className="px-3 py-2 w-48 font-medium">Storage Class</th>
                   </tr>
                 </thead>
-                <tbody className="bg-panel" onClick={(e) => {
+                <tbody className="bg-panel select-none" onClick={(e) => {
                   // Deselect when clicking on tbody but not on a row
                   if (e.target === e.currentTarget) {
                     trace('ui', 'deselect on table body click')
@@ -1293,7 +1351,7 @@ export default function ObjectExplorer() {
                 const isSel = selectedSet.has(rowKey)
                 const name = it.type === 'folder' ? it.data.prefix.split('/').filter(Boolean).slice(-1)[0] + '/' : it.data.key.split('/').slice(-1)[0]
                 return (
-  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} ref={(el) => { if (el) rowRefs.current.set(rowKey, el); else rowRefs.current.delete(rowKey) }} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default`} onDoubleClick={() => onDoubleClick(it)} onClick={(e) => {
+  <tr key={(it.type === 'object' ? 'o:' + it.data.key : 'f:' + it.data.prefix)} ref={(el) => { if (el) rowRefs.current.set(rowKey, el); else rowRefs.current.delete(rowKey) }} className={`${isSel ? 'selected-row' : 'row-hover'} cursor-default border-b border-default select-none`} onDoubleClick={() => onDoubleClick(it)} onClick={(e) => {
                       const key = rowKey
                       const isMeta = (e as any).metaKey
                       let nextSet: Set<string> | undefined
@@ -1333,12 +1391,10 @@ export default function ObjectExplorer() {
                         const primaryKey = nextSet.has(key) ? key : Array.from(nextSet)[0]
                         const entry = keyToEntry.get(primaryKey)
                         if (entry) {
-                          const isObj = entry.type === 'object'
-                          const selKey = isObj ? (entry as any).data.key : (entry as any).data.prefix
+                          const selKey = entry.type === 'object' ? entry.data.key : entry.data.prefix
                           trace('ui', 'select item', { key: selKey })
-                          setSelected(selKey, isObj ? 'object' : 'folder')
-                          setSelectedDetails(isObj ? { type: 'object', object: (entry as any).data } : { type: 'folder', folder: (entry as any).data })
                         }
+                        applySelectionState(nextSet, primaryKey)
                       }
                     }} onContextMenu={(e) => onContextMenu(e, it)}>
                     <td className="px-3 py-2 font-medium">

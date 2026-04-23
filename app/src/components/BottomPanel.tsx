@@ -56,6 +56,9 @@ function PropertiesPanel() {
   if (!bucket) {
     return <div className="px-3 py-2 text-sm opacity-70">Select a bucket to see details.</div>
   }
+  if (selectedKey && selectedDetails?.type === 'selection-summary') {
+    return <SelectionSummaryProps summary={selectedDetails} />
+  }
   // If a folder or object is selected, show its details
   if (selectedKey && selectedType === 'folder') {
     return <FolderPropsTables prefix={selectedKey} />
@@ -220,6 +223,47 @@ function LogPanel() {
   )
 }
 
+function SelectionSummaryProps({ summary }: { summary: { totalItems: number; objectCount: number; folderCount: number; totalObjectSize: number; mixedSelection: boolean } }) {
+  const labelClass = "opacity-70 select-none w-28 flex items-center gap-1 text-xs"
+  const valueClass = "min-w-0 font-mono break-all"
+  const rowClass = "flex items-start gap-1 min-w-0"
+  const wrapGrid = "grid grid-cols-2 gap-x-6 gap-y-2"
+
+  const showObjectsSummary = summary.objectCount > 0 && summary.folderCount === 0
+  const showFoldersSummary = summary.folderCount > 0 && summary.objectCount === 0
+
+  return (
+    <div className="p-3 text-sm">
+      <div className={wrapGrid}>
+        <div className={rowClass}>
+          <span className={labelClass}><span>Total selected:</span></span>
+          <span className={valueClass}>{summary.totalItems.toLocaleString()}</span>
+        </div>
+
+        {showObjectsSummary && (
+          <>
+            <div className={rowClass}>
+              <span className={labelClass}><span>Total objects:</span></span>
+              <span className={valueClass}>{summary.objectCount.toLocaleString()}</span>
+            </div>
+            <div className={rowClass}>
+              <span className={labelClass}><span>Total size:</span></span>
+              <span className={valueClass}>{formatSize(summary.totalObjectSize)}</span>
+            </div>
+          </>
+        )}
+
+        {showFoldersSummary && (
+          <div className={rowClass}>
+            <span className={labelClass}><span>Total folders:</span></span>
+            <span className={valueClass}>{summary.folderCount.toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Reusable copy icon
 function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -270,7 +314,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
           <span className={labelClass}>
             <button
               ref={keyBtnRef}
-              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5"
+              className="icon-btn icon-btn-sm"
               title="Copy key"
               aria-label="Copy key"
               onClick={async () => { try { await navigator.clipboard.writeText(keyStr) } catch {}; showCopiedTooltip(keyBtnRef.current) }}
@@ -293,7 +337,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
           <span className={labelClass}>
             <button
               ref={filenameBtnRef}
-              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5"
+              className="icon-btn icon-btn-sm"
               title="Copy filename"
               aria-label="Copy filename"
               onClick={async () => { try { await navigator.clipboard.writeText(filename) } catch {}; showCopiedTooltip(filenameBtnRef.current) }}
@@ -316,7 +360,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
           <span className={labelClass}>
             <button
               ref={uriBtnRef}
-              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5 disabled:opacity-40"
+              className="icon-btn icon-btn-sm"
               title="Copy S3 URI"
               aria-label="Copy S3 URI"
               disabled={!s3Uri}
@@ -340,7 +384,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
           <span className={labelClass}>
             <button
               ref={etagBtnRef}
-              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5 disabled:opacity-40"
+              className="icon-btn icon-btn-sm"
               title="Copy ETag"
               aria-label="Copy ETag"
               disabled={!details?.etag}
@@ -609,7 +653,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
           <span className={labelClass}>
             <button
               ref={nameBtnRef}
-              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5"
+              className="icon-btn icon-btn-sm"
               title="Copy name"
               aria-label="Copy name"
               onClick={async () => { try { await navigator.clipboard.writeText(name) } catch {}; showCopiedTooltip(nameBtnRef.current) }}
@@ -631,7 +675,7 @@ function FolderPropsTables({ prefix }: { prefix: string }) {
           <span className={labelClass}>
             <button
               ref={uriBtnRef}
-              className="text-app/80 hover:text-app inline-flex items-center justify-center cursor-pointer rounded p-0.5 disabled:opacity-40"
+              className="icon-btn icon-btn-sm"
               title="Copy S3 URI"
               aria-label="Copy S3 URI"
               disabled={!s3Uri}

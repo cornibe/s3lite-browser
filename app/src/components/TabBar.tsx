@@ -65,7 +65,7 @@ export default function TabBar() {
                 <span className="truncate flex-1 min-w-0">{title}</span>
                 {items.length > 1 && (
                   <button
-                    className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity flex-shrink-0"
+                    className="icon-btn icon-btn-sm opacity-60 hover:opacity-100 flex-shrink-0"
                     onClick={(e) => { e.stopPropagation(); closeTab(t.id) }}
                     aria-label="Close tab"
                     title="Close"
@@ -79,7 +79,7 @@ export default function TabBar() {
         })()}
         {/* New Tab button placed immediately after the last tab */}
         <button
-          className="inline-flex items-center justify-center p-1.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted hover:text-app"
+          className="icon-btn icon-btn-md text-muted"
           onClick={() => newTab()}
           aria-label="New tab"
           title="New tab"
