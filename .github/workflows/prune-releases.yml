@@ -1,0 +1,103 @@
+name: Prune Old Releases
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      keep_releases:
+        description: 'How many published semver releases to keep, including the latest one'
+        required: false
+        default: '3'
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prune-releases
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_KEEP_RELEASES: '3'
+    steps:
+      - name: Prune older published releases and tags
+        uses: actions/github-script@v7
+        env:
+          KEEP_RELEASES: ${{ github.event_name == 'workflow_dispatch' && inputs.keep_releases || env.DEFAULT_KEEP_RELEASES }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const keepReleases = Number.parseInt(process.env.KEEP_RELEASES ?? '3', 10)
+            if (!Number.isInteger(keepReleases) || keepReleases < 1) {
+              core.setFailed(`KEEP_RELEASES must be an integer >= 1. Received: ${process.env.KEEP_RELEASES}`)
+              return
+            }
+
+            const currentTag = context.payload.release?.tag_name ?? null
+            const { owner, repo } = context.repo
+            const semverTag = /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            })
+
+            const sortableDate = (release) => release.published_at ?? release.created_at ?? release.created_at
+            const releaseCandidates = releases
+              .filter((release) => !release.draft)
+              .filter((release) => semverTag.test(release.tag_name))
+              .sort((left, right) => new Date(sortableDate(right)) - new Date(sortableDate(left)))
+
+            const retainedTags = new Set()
+            if (currentTag && semverTag.test(currentTag)) {
+              retainedTags.add(currentTag)
+            }
+
+            for (const release of releaseCandidates) {
+              if (retainedTags.size >= keepReleases) {
+                break
+              }
+
+              retainedTags.add(release.tag_name)
+            }
+
+            const releasesToDelete = releaseCandidates.filter((release) => !retainedTags.has(release.tag_name))
+
+            core.info(`Keeping ${retainedTags.size} release(s): ${Array.from(retainedTags).join(', ') || '(none)'}`)
+
+            if (releasesToDelete.length === 0) {
+              core.info('No old published releases to delete.')
+              return
+            }
+
+            for (const release of releasesToDelete) {
+              core.info(`Deleting release ${release.tag_name} (id ${release.id})`)
+              await github.rest.repos.deleteRelease({
+                owner,
+                repo,
+                release_id: release.id,
+              })
+
+              try {
+                await github.rest.git.deleteRef({
+                  owner,
+                  repo,
+                  ref: `tags/${release.tag_name}`,
+                })
+                core.info(`Deleted tag ${release.tag_name}`)
+              }
+              catch (error) {
+                if (error.status === 404 || error.status === 422) {
+                  core.warning(`Tag ${release.tag_name} was already absent.`)
+                  continue
+                }
+
+                throw error
+              }
+            }

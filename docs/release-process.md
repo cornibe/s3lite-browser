@@ -31,15 +31,20 @@ This repository uses a tag-driven GitHub Actions release flow for Windows and ma
     - Sets app version from tag.
     - Runs `npm ci`, builds, packages macOS artifacts via electron-builder, and publishes.
 
+- `.github/workflows/prune-releases.yml`
+  - Trigger: `release.published` and manual `workflow_dispatch`.
+  - Behavior:
+    - Keeps the newest 3 published semver releases by default.
+    - Deletes older GitHub releases and their matching Git tags to free storage.
+    - Preserves the just-published release even if publish order is unusual.
+
 ## Normal Release Path (Automated)
 
 1. Merge changes into `main`.
 2. `auto-tag-on-main.yml` bumps patch version, pushes commit, and creates a `v*` tag.
 3. `auto-tag-on-main.yml` explicitly dispatches the platform release workflows for the new tag.
-4. The tag also remains the release source of truth for manual rebuilds and direct tag pushes.
-  - `release-win.yml`
-  - `release-mac.yml`
-5. Each workflow publishes artifacts to the GitHub release for that tag.
+4. `release-win.yml` and `release-mac.yml` publish installers to the GitHub release for that tag.
+5. When GitHub marks the release as published, `prune-releases.yml` removes older published releases beyond the retention limit.
 
 ## Manual Rebuild Path (Existing Tag)
 
@@ -54,6 +59,7 @@ Use this when a release job fails and you need to rebuild artifacts for an exist
 
 - Tag-driven releases (single source of truth).
 - Auto-tag workflow dispatches platform builds so workflow-created tags cannot be dropped by GitHub token event restrictions.
+- Automatic release retention keeps GitHub storage bounded after new releases are published.
 - Explicit tag validation before packaging.
 - `npm ci` for deterministic dependency install.
 - Concurrency groups to prevent overlapping runs for the same release target.
@@ -63,5 +69,6 @@ Use this when a release job fails and you need to rebuild artifacts for an exist
 ## Operational Notes
 
 - Keep `app/package-lock.json` committed and up to date.
+- Adjust the retention limit in `.github/workflows/prune-releases.yml` if you want to keep more or fewer published releases.
 - If the release versioning strategy changes (minor/major bumps), update `auto-tag-on-main.yml` logic.
 - If code signing is introduced later, add signing secrets and signing steps in platform workflows.
