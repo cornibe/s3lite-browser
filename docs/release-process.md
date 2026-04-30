@@ -21,6 +21,7 @@ This repository uses a tag-driven GitHub Actions release flow for Windows and ma
     - Validates release tag format (`vMAJOR.MINOR.PATCH[-PRERELEASE]`).
     - Sets app version from tag.
     - Runs `npm ci`, builds, packages Windows installers via electron-builder, and publishes.
+    - Uploads stable alias assets so the README can link to the latest Windows `.exe` and `.msi` installers.
 
 - `.github/workflows/release-mac.yml`
   - Trigger: push of tags matching `v*`.
@@ -30,6 +31,7 @@ This repository uses a tag-driven GitHub Actions release flow for Windows and ma
     - Validates release tag format (`vMAJOR.MINOR.PATCH[-PRERELEASE]`).
     - Sets app version from tag.
     - Runs `npm ci`, builds, packages macOS artifacts via electron-builder, and publishes.
+    - Uploads a stable alias asset so the README can link to the latest macOS `.dmg` installer.
 
 - `.github/workflows/prune-releases.yml`
   - Trigger: `release.published` and manual `workflow_dispatch`.

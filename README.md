@@ -1,6 +1,6 @@
 # S3 Browser-lite
 
-Lightweight desktop app for browsing, downloading, and uploading Amazon S3 content. Runs on Windows today; macOS builds are planned.
+Lightweight desktop app for browsing, downloading, and uploading Amazon S3 content on Windows and macOS.
 
 ## Key features
 
@@ -16,8 +16,9 @@ Lightweight desktop app for browsing, downloading, and uploading Amazon S3 conte
 
 ## Download and install
 
-- Windows installers (NSIS .exe / MSI .msi): https://github.com/cornibe/s3lite-browser/releases
-- macOS: coming soon
+- Windows installer (.exe): [Download the latest Windows installer](https://github.com/cornibe/s3lite-browser/releases/latest/download/s3-browser-lite-windows-latest.exe)
+- Windows MSI (.msi): [Download the latest Windows MSI](https://github.com/cornibe/s3lite-browser/releases/latest/download/s3-browser-lite-windows-latest.msi)
+- macOS installer (.dmg): [Download the latest macOS installer](https://github.com/cornibe/s3lite-browser/releases/latest/download/s3-browser-lite-macos-latest.dmg)
 
 If there are no Releases yet, you can build from source (see Build from source below).
 

@@ -117,6 +117,24 @@ jobs:
       - name: Package macOS (unsigned dmg)
         run: npx electron-builder --mac dmg --publish always
 
+      - name: Create stable macOS installer alias
+        run: |
+          set -euo pipefail
+          dmg_file=$(find dist -maxdepth 1 -type f -name '*.dmg' | sort | head -n 1 || true)
+          if [[ -z "$dmg_file" ]]; then
+            echo 'No macOS DMG installer found in dist.' >&2
+            exit 1
+          fi
+
+          cp "$dmg_file" dist/s3-browser-lite-macos-latest.dmg
+
+      - name: Upload stable macOS installer alias
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          files: app/dist/s3-browser-lite-macos-latest.dmg
+          overwrite_files: true
+
       - name: List dist output
         run: ls -l dist
 

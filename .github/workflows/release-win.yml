@@ -105,6 +105,31 @@ jobs:
       - name: Package Windows (NSIS + MSI) and publish to GitHub
         run: npx electron-builder --win nsis msi --publish always
 
+      - name: Create stable Windows installer aliases
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Sort-Object Name | Select-Object -First 1
+          if (-not $exe) {
+            throw 'No Windows EXE installer found in dist.'
+          }
+
+          $msi = Get-ChildItem dist -Filter *.msi | Sort-Object Name | Select-Object -First 1
+          if (-not $msi) {
+            throw 'No Windows MSI installer found in dist.'
+          }
+
+          Copy-Item $exe.FullName (Join-Path $pwd 'dist\s3-browser-lite-windows-latest.exe') -Force
+          Copy-Item $msi.FullName (Join-Path $pwd 'dist\s3-browser-lite-windows-latest.msi') -Force
+
+      - name: Upload stable Windows installer aliases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          files: |
+            app/dist/s3-browser-lite-windows-latest.exe
+            app/dist/s3-browser-lite-windows-latest.msi
+          overwrite_files: true
+
       - name: List dist output
         shell: pwsh
         run: Get-ChildItem -Recurse dist | Select-Object FullName, Length
