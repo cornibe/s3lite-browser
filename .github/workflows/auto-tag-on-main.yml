@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: auto-tag-main
@@ -89,10 +90,32 @@ jobs:
           echo "Creating tag $tag for commit $(git rev-parse --short HEAD)"
           git tag -a "$tag" -m "Automated tag for main: $tag"
           git push origin "$tag"
+
+      - name: Dispatch platform release workflows
+        if: steps.headtag.outputs.head_is_tagged == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag='${{ steps.ver.outputs.tag }}'
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows"
+
+          for workflow in release-win.yml release-mac.yml; do
+            echo "Dispatching ${workflow} for ${tag}"
+            curl --fail --silent --show-error \
+              -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${api}/${workflow}/dispatches" \
+              -d "{\"ref\":\"main\",\"inputs\":{\"tag\":\"${tag}\"}}"
+          done
+
       - name: Summary
         run: |
           if [ "${{ steps.headtag.outputs.head_is_tagged }}" = "true" ]; then
             echo "HEAD already has a version tag; skipping."
           else
             echo "Pushed tag ${{ steps.ver.outputs.tag }} (from ${{ steps.ver.outputs.base }})"
+            echo "Dispatched Windows and macOS release workflows for ${{ steps.ver.outputs.tag }}"
           fi

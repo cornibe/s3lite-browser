@@ -35,10 +35,11 @@ This repository uses a tag-driven GitHub Actions release flow for Windows and ma
 
 1. Merge changes into `main`.
 2. `auto-tag-on-main.yml` bumps patch version, pushes commit, and creates a `v*` tag.
-3. Tag push automatically triggers:
-   - `release-win.yml`
-   - `release-mac.yml`
-4. Each workflow publishes artifacts to the GitHub release for that tag.
+3. `auto-tag-on-main.yml` explicitly dispatches the platform release workflows for the new tag.
+4. The tag also remains the release source of truth for manual rebuilds and direct tag pushes.
+  - `release-win.yml`
+  - `release-mac.yml`
+5. Each workflow publishes artifacts to the GitHub release for that tag.
 
 ## Manual Rebuild Path (Existing Tag)
 
@@ -52,6 +53,7 @@ Use this when a release job fails and you need to rebuild artifacts for an exist
 ## Best-Practice Guardrails Implemented
 
 - Tag-driven releases (single source of truth).
+- Auto-tag workflow dispatches platform builds so workflow-created tags cannot be dropped by GitHub token event restrictions.
 - Explicit tag validation before packaging.
 - `npm ci` for deterministic dependency install.
 - Concurrency groups to prevent overlapping runs for the same release target.
