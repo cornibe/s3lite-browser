@@ -19,6 +19,9 @@ const Channels = {
   S3_DELETE_FOLDER: 's3:deleteFolder',
   S3_CREATE_FOLDER: 's3:createFolder',
   S3_COPY_OBJECT: 's3:copyObject',
+  S3_START_OBJECT_ACTION: 's3:startObjectAction',
+  S3_CANCEL_OBJECT_ACTION: 's3:cancelObjectAction',
+  S3_OBJECT_ACTION_EVENT: 's3:objectActionEvent',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
@@ -65,7 +68,14 @@ const api: RendererAPI = {
     deleteObjects: (params) => ipcRenderer.invoke(Channels.S3_DELETE_OBJECTS, params),
     deleteFolder: (params) => ipcRenderer.invoke(Channels.S3_DELETE_FOLDER, params),
     createFolder: (params) => ipcRenderer.invoke(Channels.S3_CREATE_FOLDER, params),
-    copyObject: (params) => ipcRenderer.invoke(Channels.S3_COPY_OBJECT, params)
+    copyObject: (params) => ipcRenderer.invoke(Channels.S3_COPY_OBJECT, params),
+    startObjectAction: (params) => ipcRenderer.invoke(Channels.S3_START_OBJECT_ACTION, params),
+    cancelObjectAction: (params) => ipcRenderer.invoke(Channels.S3_CANCEL_OBJECT_ACTION, params),
+    onObjectActionEvent: (cb) => {
+      const handler = (_: any, evt: any) => cb(evt)
+      ipcRenderer.on(Channels.S3_OBJECT_ACTION_EVENT, handler)
+      return () => ipcRenderer.removeListener(Channels.S3_OBJECT_ACTION_EVENT, handler)
+    }
   },
   env: {
     isDev: () => process.env.NODE_ENV !== 'production'

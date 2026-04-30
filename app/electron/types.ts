@@ -125,6 +125,78 @@ export type CopyObjectParams = {
   destinationKey: string
 }
 
+export type ObjectActionMode = 'copy' | 'move'
+
+export type ObjectActionItem =
+  | { type: 'object'; key: string }
+  | { type: 'folder'; prefix: string }
+
+export type StartObjectActionParams = {
+  mode: ObjectActionMode
+  sourceBucket: string
+  destinationBucket: string
+  destinationPrefix?: string
+  items: ObjectActionItem[]
+}
+
+export type CancelObjectActionParams = {
+  operationId: string
+}
+
+export type ObjectActionError = {
+  sourceKey: string
+  destinationKey?: string
+  error: string
+}
+
+export type ObjectActionEvent =
+  | {
+      type: 'started'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+    }
+  | {
+      type: 'progress'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      currentSourceKey: string
+      currentDestinationKey: string
+    }
+  | {
+      type: 'complete'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      errors: ObjectActionError[]
+    }
+  | {
+      type: 'error'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      error: string
+      errors: ObjectActionError[]
+    }
+  | {
+      type: 'aborted'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      errors: ObjectActionError[]
+    }
+
 export type DeleteResult = {
   deleted: string[]
   errors: Array<{ key: string; error: string }>
@@ -219,8 +291,11 @@ export interface RendererAPI {
     deleteFolder(params: DeleteFolderParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
     createFolder(params: CreateFolderParams): Promise<{ ok: true } | { ok: false; error: string }>
     copyObject(params: CopyObjectParams): Promise<{ ok: true } | { ok: false; error: string }>
+    startObjectAction(params: StartObjectActionParams): Promise<{ ok: true; operationId: string } | { ok: false; error: string }>
+    cancelObjectAction(params: CancelObjectActionParams): Promise<{ ok: true } | { ok: false; error: string }>
     getObjectDetails(params: GetObjectDetailsParams): Promise<ObjectDetailsResult>
-  getObjectPreview(params: GetObjectPreviewParams): Promise<ObjectPreviewResult>
+    getObjectPreview(params: GetObjectPreviewParams): Promise<ObjectPreviewResult>
+    onObjectActionEvent(cb: (evt: ObjectActionEvent) => void): () => void
   }
   env: {
     isDev(): boolean
@@ -275,6 +350,9 @@ export const IpcChannels = {
   S3_DELETE_FOLDER: 's3:deleteFolder',
   S3_CREATE_FOLDER: 's3:createFolder',
   S3_COPY_OBJECT: 's3:copyObject',
+  S3_START_OBJECT_ACTION: 's3:startObjectAction',
+  S3_CANCEL_OBJECT_ACTION: 's3:cancelObjectAction',
+  S3_OBJECT_ACTION_EVENT: 's3:objectActionEvent',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',

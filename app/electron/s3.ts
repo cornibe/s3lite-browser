@@ -4,13 +4,14 @@ import path from 'path'
 import os from 'os'
 import { getLogger } from './log'
 import * as transfers from './transfers'
-import type { S3InitParams, ListObjectsParams, ListObjectsResult, ProfileInfo, FolderStatsPageParams, FolderStatsPageResult } from './types'
+import type { S3InitParams, ListObjectsParams, ListObjectsResult, ProfileInfo, FolderStatsPageParams, FolderStatsPageResult, ObjectActionError, ObjectActionEvent, StartObjectActionParams } from './types'
 
 let client: S3Client | null = null
 let currentProfile: string | undefined
 let overrideCredsPath: string | undefined
 let overrideConfigPath: string | undefined
 const clientCache = new Map<string, { client: S3Client; region: string }>()
+const objectActionAbortMap = new Map<string, { aborted: boolean }>()
 
 function getCredentialsPath() {
   return overrideCredsPath || process.env.AWS_SHARED_CREDENTIALS_FILE || path.join(os.homedir(), '.aws', 'credentials')
@@ -186,6 +187,173 @@ export async function listObjectsRecursive(params: ListObjectsParams): Promise<L
   } catch (err) {
     throw toFriendlyError(`List Objects Recursively in s3://${params.bucket}/${params.prefix ?? ''}`, err)
   }
+}
+
+function normalizePrefix(prefix?: string) {
+  const trimmed = (prefix || '').trim().replace(/^\/+/, '')
+  if (!trimmed) return ''
+  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`
+}
+
+function basenameFromKey(key: string) {
+  const parts = key.split('/').filter(Boolean)
+  return parts[parts.length - 1] || key
+}
+
+async function listAllKeys(bucket: string, prefix: string): Promise<string[]> {
+  const c = ensureClient()
+  const keys: string[] = []
+  let continuationToken: string | undefined = undefined
+  do {
+    const out = await c.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+      MaxKeys: 1000
+    }))
+    for (const item of out.Contents || []) {
+      if (item.Key) keys.push(item.Key)
+    }
+    continuationToken = out.IsTruncated ? out.NextContinuationToken : undefined
+  } while (continuationToken)
+  return keys
+}
+
+async function buildObjectActionPlan(params: StartObjectActionParams) {
+  const destinationPrefix = normalizePrefix(params.destinationPrefix)
+  const planned = [] as Array<{ sourceKey: string; destinationKey: string }>
+  const seenSourceKeys = new Set<string>()
+
+  for (const item of params.items) {
+    if (item.type === 'object') {
+      if (seenSourceKeys.has(item.key)) continue
+      seenSourceKeys.add(item.key)
+      planned.push({
+        sourceKey: item.key,
+        destinationKey: `${destinationPrefix}${basenameFromKey(item.key)}`
+      })
+      continue
+    }
+
+    const sourcePrefix = normalizePrefix(item.prefix)
+    const folderName = basenameFromKey(sourcePrefix)
+    const destinationRoot = `${destinationPrefix}${folderName}/`
+    const keys = await listAllKeys(params.sourceBucket, sourcePrefix)
+    if (keys.length === 0) {
+      if (!seenSourceKeys.has(sourcePrefix)) {
+        seenSourceKeys.add(sourcePrefix)
+        planned.push({ sourceKey: sourcePrefix, destinationKey: destinationRoot })
+      }
+      continue
+    }
+
+    for (const key of keys) {
+      if (seenSourceKeys.has(key)) continue
+      seenSourceKeys.add(key)
+      const relative = key.startsWith(sourcePrefix) ? key.slice(sourcePrefix.length) : basenameFromKey(key)
+      planned.push({
+        sourceKey: key,
+        destinationKey: relative ? `${destinationRoot}${relative}` : destinationRoot
+      })
+    }
+  }
+
+  return planned
+}
+
+export async function executeObjectAction(
+  params: StartObjectActionParams,
+  operationId: string,
+  onEvent: (evt: ObjectActionEvent) => void
+): Promise<{ total: number; completed: number; failed: number; errors: ObjectActionError[] }> {
+  const abortState = { aborted: false }
+  objectActionAbortMap.set(operationId, abortState)
+  const plan = await buildObjectActionPlan(params)
+  const errors: ObjectActionError[] = []
+  let completed = 0
+  let failed = 0
+
+  try {
+    onEvent({
+      type: 'started',
+      operationId,
+      mode: params.mode,
+      total: plan.length,
+      completed,
+      failed
+    })
+
+    for (const step of plan) {
+      if (abortState.aborted) {
+        onEvent({
+          type: 'aborted',
+          operationId,
+          mode: params.mode,
+          total: plan.length,
+          completed,
+          failed,
+          errors
+        })
+        return { total: plan.length, completed, failed, errors }
+      }
+
+      try {
+        if (params.sourceBucket === params.destinationBucket && step.sourceKey === step.destinationKey) {
+          throw new Error('Source and destination are the same.')
+        }
+        await copyObject({
+          sourceBucket: params.sourceBucket,
+          sourceKey: step.sourceKey,
+          destinationBucket: params.destinationBucket,
+          destinationKey: step.destinationKey
+        })
+        if (abortState.aborted) {
+          onEvent({
+            type: 'aborted',
+            operationId,
+            mode: params.mode,
+            total: plan.length,
+            completed,
+            failed,
+            errors
+          })
+          return { total: plan.length, completed, failed, errors }
+        }
+        if (params.mode === 'move') {
+          await deleteObject(params.sourceBucket, step.sourceKey)
+        }
+        completed += 1
+      } catch (err) {
+        failed += 1
+        errors.push({
+          sourceKey: step.sourceKey,
+          destinationKey: step.destinationKey,
+          error: (err as Error)?.message || 'Operation failed'
+        })
+      }
+
+      onEvent({
+        type: 'progress',
+        operationId,
+        mode: params.mode,
+        total: plan.length,
+        completed,
+        failed,
+        currentSourceKey: step.sourceKey,
+        currentDestinationKey: step.destinationKey
+      })
+    }
+
+    return { total: plan.length, completed, failed, errors }
+  } finally {
+    objectActionAbortMap.delete(operationId)
+  }
+}
+
+export function cancelObjectAction(operationId: string) {
+  const state = objectActionAbortMap.get(operationId)
+  if (!state) throw new Error('Object action is not running.')
+  state.aborted = true
 }
 
 function parseIni(content: string) {
