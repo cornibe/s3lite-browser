@@ -1,6 +1,6 @@
 {
   "name": "s3-browser-lite",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "private": true,
   "description": "Lightweight S3 bucket/object browser for Windows and macOS",
   "author": "cornibe",
