@@ -74,6 +74,18 @@ export function registerIpc() {
       throw e
     }
   })
+  ipcMain.handle(IpcChannels.S3_GET_OBJECT_DETAILS, async (_e, params) => {
+    const t = Date.now()
+    try {
+      const out = await s3.getObjectDetails(params)
+      getLogger().debug('ipc', 's3:getObjectDetails ok', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, tags: out.tags?.length || 0 })
+      return out
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to get object details'
+      getLogger().warn('ipc', 's3:getObjectDetails error', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, error: msg })
+      throw e
+    }
+  })
   ipcMain.handle(IpcChannels.S3_GET_OBJECT_PREVIEW, async (_e, params) => {
     const t = Date.now()
     try {
@@ -195,6 +207,34 @@ export function registerIpc() {
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to create folder'
       getLogger().warn('ipc', 's3:createFolder error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.S3_COPY_OBJECT, async (_e, params) => {
+    const t = Date.now()
+    try {
+      await s3.copyObject(params)
+      getLogger().info('ipc', 's3:copyObject ok', {
+        durationMs: Date.now() - t,
+        sourceBucket: params.sourceBucket,
+        sourceKey: params.sourceKey,
+        destinationBucket: params.destinationBucket,
+        destinationKey: params.destinationKey
+      })
+      try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'CopyObject', bucket: params.destinationBucket, key: params.destinationKey, status: 'ok', durationMs: Date.now() - t, extra: { sourceBucket: params.sourceBucket, sourceKey: params.sourceKey } })) } catch {}
+      return { ok: true as const }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to copy object'
+      getLogger().warn('ipc', 's3:copyObject error', {
+        durationMs: Date.now() - t,
+        sourceBucket: params.sourceBucket,
+        sourceKey: params.sourceKey,
+        destinationBucket: params.destinationBucket,
+        destinationKey: params.destinationKey,
+        error: msg
+      })
+      try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'CopyObject', bucket: params.destinationBucket, key: params.destinationKey, status: 'error', error: msg, durationMs: Date.now() - t, extra: { sourceBucket: params.sourceBucket, sourceKey: params.sourceKey } })) } catch {}
       return { ok: false as const, error: msg }
     }
   })

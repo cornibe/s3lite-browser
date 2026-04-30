@@ -13,7 +13,7 @@ function ensureClient(): S3Client {
   if (!s3ClientRef) throw new Error('S3 client not initialized. Connect to a profile first.')
   return s3ClientRef
 }
-export function bindS3Client(c: S3Client) { s3ClientRef = c }
+export function bindS3Client(c: S3Client | null) { s3ClientRef = c }
 
 const DEFAULTS = {
   objectConcurrency: 4,

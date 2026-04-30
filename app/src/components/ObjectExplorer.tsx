@@ -8,6 +8,17 @@ import CreateFolderModal from './CreateFolderModal'
 import DeleteConfirmationModal from './DeleteConfirmationModal'
 import MountLocationModal from './MountLocationModal'
 import ExportObjectListModal from './ExportObjectListModal'
+import CopyObjectModal from './CopyObjectModal'
+
+type ObjectActionMode = 'copy' | 'move' | 'rename'
+
+type ObjectActionInit = {
+  mode: ObjectActionMode
+  sourceBucket: string
+  sourceKey: string
+  destinationBucket: string
+  destinationKey: string
+}
 
 type Entry = (
   | { type: 'folder'; data: S3Folder }
@@ -205,6 +216,7 @@ export default function ObjectExplorer() {
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState(null as any)
   const [showExport, setShowExport] = useState(false)
+  const [copyObjectInit, setCopyObjectInit] = useState(null as null | ObjectActionInit)
   // Mount modal state
   const [mountInit, setMountInit] = useState(null as { bucket: string; prefix?: string } | null)
   // Edit path state
@@ -1027,6 +1039,55 @@ export default function ObjectExplorer() {
     setContextMenu(null)
   }
 
+  const handleOpenObjectAction = (mode: ObjectActionMode, item?: Entry) => {
+    const target = item || items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
+    if (!bucket || !target || target.type !== 'object') return
+    const fileName = target.data.key.split('/').slice(-1)[0] || target.data.key
+    const sourceParts = target.data.key.split('/')
+    const parentPrefix = sourceParts.length > 1 ? `${sourceParts.slice(0, -1).join('/')}/` : ''
+    const destinationPrefix = mode === 'rename' ? parentPrefix : (prefix || '')
+    const destinationKey = `${destinationPrefix}${fileName}`
+    setCopyObjectInit({
+      mode,
+      sourceBucket: bucket,
+      sourceKey: target.data.key,
+      destinationBucket: bucket,
+      destinationKey
+    })
+    setContextMenu(null)
+  }
+
+  const handleCopyObjectSubmit = async (input: { destinationBucket: string; destinationKey: string }) => {
+    if (!copyObjectInit) return
+    const copyResult = await (window as any).api.s3.copyObject({
+      sourceBucket: copyObjectInit.sourceBucket,
+      sourceKey: copyObjectInit.sourceKey,
+      destinationBucket: input.destinationBucket,
+      destinationKey: input.destinationKey
+    })
+    if (!copyResult.ok) {
+      throw new Error(copyResult.error)
+    }
+
+    if (copyObjectInit.mode === 'move' || copyObjectInit.mode === 'rename') {
+      const deleteResult = await (window as any).api.s3.deleteObject({
+        bucket: copyObjectInit.sourceBucket,
+        key: copyObjectInit.sourceKey
+      })
+      if (!deleteResult.ok) {
+        throw new Error(deleteResult.error)
+      }
+    }
+
+    const actionLabel = copyObjectInit.mode === 'copy' ? 'Copied' : copyObjectInit.mode === 'move' ? 'Moved' : 'Renamed'
+    showToast({
+      type: 'success',
+      message: `${actionLabel} to s3://${input.destinationBucket}/${input.destinationKey}`
+    })
+    setCopyObjectInit(null)
+    await refetch()
+  }
+
   const handleDeleteSelected = () => {
     const keys = Array.from(selectedSet)
     if (keys.length === 0) return
@@ -1508,6 +1569,13 @@ export default function ObjectExplorer() {
        ref={ctxMenuRef}
      >
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
+          {contextMenu.item?.type === 'object' && (
+            <>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('copy', contextMenu.item)}>Copy object</button>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('move', contextMenu.item)}>Move object</button>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('rename', contextMenu.item)}>Rename object</button>
+            </>
+          )}
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => { setShowExport(true); setContextMenu(null) }}>Export object list</button>
           {contextMenu.item?.type === 'folder' && (
@@ -1597,6 +1665,17 @@ export default function ObjectExplorer() {
           const it = items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
           return it ? [it] as any : []
         })()}
+      />
+      <CopyObjectModal
+        isOpen={Boolean(copyObjectInit)}
+        sourceBucket={copyObjectInit?.sourceBucket || ''}
+        sourceKey={copyObjectInit?.sourceKey || ''}
+        defaultDestinationBucket={copyObjectInit?.destinationBucket || bucket || ''}
+        defaultDestinationKey={copyObjectInit?.destinationKey || ''}
+        title={copyObjectInit?.mode === 'copy' ? 'Copy Object' : copyObjectInit?.mode === 'move' ? 'Move Object' : 'Rename Object'}
+        submitLabel={copyObjectInit?.mode === 'copy' ? 'Copy Object' : copyObjectInit?.mode === 'move' ? 'Move Object' : 'Rename Object'}
+        onClose={() => setCopyObjectInit(null)}
+        onSubmit={handleCopyObjectSubmit}
       />
 
       {/* Auto-fetch progress modal */}

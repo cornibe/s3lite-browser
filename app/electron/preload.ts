@@ -7,6 +7,7 @@ const Channels = {
   S3_LIST_OBJECTS: 's3:listObjects',
   S3_LIST_OBJECTS_RECURSIVE: 's3:listObjectsRecursive',
   S3_FOLDER_STATS_PAGE: 's3:folderStatsPage',
+  S3_GET_OBJECT_DETAILS: 's3:getObjectDetails',
   S3_GET_OBJECT_PREVIEW: 's3:getObjectPreview',
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
@@ -17,6 +18,7 @@ const Channels = {
   S3_DELETE_OBJECTS: 's3:deleteObjects',
   S3_DELETE_FOLDER: 's3:deleteFolder',
   S3_CREATE_FOLDER: 's3:createFolder',
+  S3_COPY_OBJECT: 's3:copyObject',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',
@@ -52,6 +54,7 @@ const api: RendererAPI = {
     listObjects: (params) => ipcRenderer.invoke(Channels.S3_LIST_OBJECTS, params),
     listObjectsRecursive: (params) => ipcRenderer.invoke(Channels.S3_LIST_OBJECTS_RECURSIVE, params),
   folderStatsPage: (params) => ipcRenderer.invoke(Channels.S3_FOLDER_STATS_PAGE, params),
+    getObjectDetails: (params) => ipcRenderer.invoke(Channels.S3_GET_OBJECT_DETAILS, params),
     getObjectPreview: (params) => ipcRenderer.invoke(Channels.S3_GET_OBJECT_PREVIEW, params),
     listProfiles: () => ipcRenderer.invoke(Channels.S3_LIST_PROFILES),
     setAwsFiles: (params) => ipcRenderer.invoke(Channels.S3_SET_AWS_FILES, params),
@@ -61,7 +64,8 @@ const api: RendererAPI = {
     deleteObject: (params) => ipcRenderer.invoke(Channels.S3_DELETE_OBJECT, params),
     deleteObjects: (params) => ipcRenderer.invoke(Channels.S3_DELETE_OBJECTS, params),
     deleteFolder: (params) => ipcRenderer.invoke(Channels.S3_DELETE_FOLDER, params),
-    createFolder: (params) => ipcRenderer.invoke(Channels.S3_CREATE_FOLDER, params)
+    createFolder: (params) => ipcRenderer.invoke(Channels.S3_CREATE_FOLDER, params),
+    copyObject: (params) => ipcRenderer.invoke(Channels.S3_COPY_OBJECT, params)
   },
   env: {
     isDev: () => process.env.NODE_ENV !== 'production'

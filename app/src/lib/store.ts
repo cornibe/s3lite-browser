@@ -102,6 +102,7 @@ type Actions = {
   newTab: (initial?: Partial<Pick<TabState, 'profile' | 'bucket' | 'prefix' | 'title'>>) => string
   closeTab: (tabId: string) => void
   activateTab: (tabId: string) => void
+  prewarmTabProfile: (tabId: string) => void
   renameTab: (tabId: string, title?: string) => void
   // Active tab scoped setters
   setProfile: (profile?: string) => void
@@ -225,6 +226,27 @@ type ShowToast = {
   (type: 'error' | 'info' | 'success', message: string, durationMs?: number): void
 }
 
+let initializedProfile: string | undefined
+const pendingProfileInits = new Map<string, Promise<void>>()
+
+async function ensureProfileInitialized(profile?: string) {
+  if (!profile) return
+  if (initializedProfile === profile) return
+
+  const pending = pendingProfileInits.get(profile)
+  if (pending) return pending
+
+  const initPromise = (async () => {
+    await (window as any).api.s3.init({ profile })
+    initializedProfile = profile
+  })().finally(() => {
+    pendingProfileInits.delete(profile)
+  })
+
+  pendingProfileInits.set(profile, initPromise)
+  return initPromise
+}
+
 export const useStore = create<State & Actions>((set, get) => {
   function syncMirrorFrom(tab: TabState) {
     set({
@@ -316,12 +338,16 @@ export const useStore = create<State & Actions>((set, get) => {
       if (!tab) return
       set({ activeTabId: tabId })
       syncMirrorFrom(tab)
-      // Optionally re-init S3 client to this tab's profile for isolation
+      // Reuse the active client when it already matches, and dedupe reconnects across quick tab switches.
       if (tab.profile) {
-        ;(async () => {
-          try { await (window as any).api.s3.init({ profile: tab.profile }) } catch {}
-        })()
+        void ensureProfileInitialized(tab.profile)
       }
+    },
+    prewarmTabProfile: (tabId) => {
+      const s = get()
+      const tab = s.tabs[tabId]
+      if (!tab?.profile || tabId === s.activeTabId) return
+      void ensureProfileInitialized(tab.profile)
     },
     renameTab: (tabId, title) => set(s => ({ tabs: { ...s.tabs, [tabId]: { ...s.tabs[tabId], title } } })),
 
@@ -340,7 +366,13 @@ export const useStore = create<State & Actions>((set, get) => {
       next.connected = tab.connected
       return next
     }),
-    setConnected: (connected) => set(s => { const id = s.activeTabId; const tab = { ...s.tabs[id], connected }; const tabs = { ...s.tabs, [id]: tab }; return { tabs, connected } as any }),
+    setConnected: (connected) => set(s => {
+      const id = s.activeTabId
+      const tab = { ...s.tabs[id], connected }
+      if (connected && tab.profile) initializedProfile = tab.profile
+      const tabs = { ...s.tabs, [id]: tab }
+      return { tabs, connected } as any
+    }),
     setConnectionError: (err) => set(s => { const id = s.activeTabId; const tab = { ...s.tabs[id], connectionError: err }; const tabs = { ...s.tabs, [id]: tab }; return { tabs, connectionError: err } as any }),
     setIsSwitchingProfile: (v) => set(s => { const id = s.activeTabId; const tab = { ...s.tabs[id], isSwitchingProfile: v }; const tabs = { ...s.tabs, [id]: tab }; return { tabs, isSwitchingProfile: v } as any }),
     setNavSelection: (sel) => set(s => { const id = s.activeTabId; const tab = { ...s.tabs[id], navSelection: sel }; const tabs = { ...s.tabs, [id]: tab }; return { tabs, navSelection: sel } as any }),
