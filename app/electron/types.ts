@@ -61,6 +61,37 @@ export type ObjectPreviewResult = {
   text?: string
 }
 
+export type GetObjectDetailsParams = {
+  bucket: string
+  key: string
+}
+
+export type ObjectTag = {
+  key: string
+  value: string
+}
+
+export type ObjectDetailsResult = {
+  key: string
+  size: number
+  lastModified?: string
+  etag?: string
+  storageClass?: string
+  contentType?: string
+  contentEncoding?: string
+  contentLanguage?: string
+  cacheControl?: string
+  contentDisposition?: string
+  expires?: string
+  metadata?: Record<string, string>
+  tags?: ObjectTag[]
+  versionId?: string
+  serverSideEncryption?: string
+  restore?: string
+  websiteRedirectLocation?: string
+  tagsError?: string
+}
+
 // New operation types
 export type CreateBucketParams = {
   bucketName: string
@@ -86,6 +117,85 @@ export type CreateFolderParams = {
   bucket: string
   prefix: string
 }
+
+export type CopyObjectParams = {
+  sourceBucket: string
+  sourceKey: string
+  destinationBucket: string
+  destinationKey: string
+}
+
+export type ObjectActionMode = 'copy' | 'move'
+
+export type ObjectActionItem =
+  | { type: 'object'; key: string }
+  | { type: 'folder'; prefix: string }
+
+export type StartObjectActionParams = {
+  mode: ObjectActionMode
+  sourceBucket: string
+  destinationBucket: string
+  destinationPrefix?: string
+  items: ObjectActionItem[]
+}
+
+export type CancelObjectActionParams = {
+  operationId: string
+}
+
+export type ObjectActionError = {
+  sourceKey: string
+  destinationKey?: string
+  error: string
+}
+
+export type ObjectActionEvent =
+  | {
+      type: 'started'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+    }
+  | {
+      type: 'progress'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      currentSourceKey: string
+      currentDestinationKey: string
+    }
+  | {
+      type: 'complete'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      errors: ObjectActionError[]
+    }
+  | {
+      type: 'error'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      error: string
+      errors: ObjectActionError[]
+    }
+  | {
+      type: 'aborted'
+      operationId: string
+      mode: ObjectActionMode
+      total: number
+      completed: number
+      failed: number
+      errors: ObjectActionError[]
+    }
 
 export type DeleteResult = {
   deleted: string[]
@@ -180,7 +290,12 @@ export interface RendererAPI {
     deleteObjects(params: DeleteObjectsParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
     deleteFolder(params: DeleteFolderParams): Promise<{ ok: true; result: DeleteResult } | { ok: false; error: string }>
     createFolder(params: CreateFolderParams): Promise<{ ok: true } | { ok: false; error: string }>
-  getObjectPreview(params: GetObjectPreviewParams): Promise<ObjectPreviewResult>
+    copyObject(params: CopyObjectParams): Promise<{ ok: true } | { ok: false; error: string }>
+    startObjectAction(params: StartObjectActionParams): Promise<{ ok: true; operationId: string } | { ok: false; error: string }>
+    cancelObjectAction(params: CancelObjectActionParams): Promise<{ ok: true } | { ok: false; error: string }>
+    getObjectDetails(params: GetObjectDetailsParams): Promise<ObjectDetailsResult>
+    getObjectPreview(params: GetObjectPreviewParams): Promise<ObjectPreviewResult>
+    onObjectActionEvent(cb: (evt: ObjectActionEvent) => void): () => void
   }
   env: {
     isDev(): boolean
@@ -223,6 +338,7 @@ export const IpcChannels = {
   S3_LIST_OBJECTS: 's3:listObjects',
   S3_LIST_OBJECTS_RECURSIVE: 's3:listObjectsRecursive',
   S3_FOLDER_STATS_PAGE: 's3:folderStatsPage',
+  S3_GET_OBJECT_DETAILS: 's3:getObjectDetails',
   S3_GET_OBJECT_PREVIEW: 's3:getObjectPreview',
   S3_LIST_PROFILES: 's3:listProfiles',
   S3_SET_AWS_FILES: 's3:setAwsFiles',
@@ -233,6 +349,10 @@ export const IpcChannels = {
   S3_DELETE_OBJECTS: 's3:deleteObjects',
   S3_DELETE_FOLDER: 's3:deleteFolder',
   S3_CREATE_FOLDER: 's3:createFolder',
+  S3_COPY_OBJECT: 's3:copyObject',
+  S3_START_OBJECT_ACTION: 's3:startObjectAction',
+  S3_CANCEL_OBJECT_ACTION: 's3:cancelObjectAction',
+  S3_OBJECT_ACTION_EVENT: 's3:objectActionEvent',
   UI_PICK_CREDENTIALS: 'ui:pickCredentials',
   UI_PICK_DIRECTORY: 'ui:pickDirectory',
   UI_PROCESS_DROPPED_FILES: 'ui:processDroppedFiles',

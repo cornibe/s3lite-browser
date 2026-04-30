@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../lib/store'
 import TransferQueue from './TransferQueue'
+import type { ObjectDetailsResult } from '../../electron/types'
 
 // Simple tabs component to host Properties and Transfers at the bottom
 export default function BottomPanel() {
@@ -275,9 +276,11 @@ function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
 
 // Object properties split in multiple tables: Details, Metadata (placeholder), Tags (placeholder)
 function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keyStr: string; details?: any }) {
-  // For now, we use information encoded in the key; deeper metadata/tags could be queried later.
   const { showToast } = useStore() as any
   const s3Uri = bucket ? `s3://${bucket}/${keyStr}` : ''
+  const [remoteDetails, setRemoteDetails] = React.useState(null as ObjectDetailsResult | null)
+  const [loadingDetails, setLoadingDetails] = React.useState(false)
+  const [detailsError, setDetailsError] = React.useState<string | null>(null)
   const [copied, setCopied] = React.useState(false)
   const [tooltipPos, setTooltipPos] = React.useState(null as null | { x: number; y: number })
   const copyTimer = React.useRef(undefined as any)
@@ -287,11 +290,32 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
   const filenameBtnRef = React.useRef(null as any)
 
   const filename = React.useMemo(() => keyStr.split('/').slice(-1)[0], [keyStr])
+  const mergedDetails = React.useMemo(() => ({ ...(details || {}), ...(remoteDetails || {}) }), [details, remoteDetails])
   const filetype = React.useMemo(() => {
-    if (details?.contentType) return details.contentType
+    if (mergedDetails?.contentType) return mergedDetails.contentType
     const dot = filename.lastIndexOf('.')
     return dot > 0 ? filename.slice(dot + 1).toLowerCase() : 'unknown'
-  }, [details?.contentType, filename])
+  }, [mergedDetails?.contentType, filename])
+
+  React.useEffect(() => {
+    let canceled = false
+    async function loadDetails() {
+      if (!bucket || !keyStr) return
+      setLoadingDetails(true)
+      setDetailsError(null)
+      setRemoteDetails(null)
+      try {
+        const res = await (window as any).api.s3.getObjectDetails({ bucket, key: keyStr })
+        if (!canceled) setRemoteDetails(res)
+      } catch (e) {
+        if (!canceled) setDetailsError((e as Error)?.message || 'Failed to load object details')
+      } finally {
+        if (!canceled) setLoadingDetails(false)
+      }
+    }
+    void loadDetails()
+    return () => { canceled = true }
+  }, [bucket, keyStr])
 
   const labelClass = "opacity-70 select-none w-20 flex items-center gap-1 text-xs"
   const valueClass = "min-w-0"
@@ -308,6 +332,11 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
 
   return (
     <div className="p-3 text-sm">
+      {(loadingDetails || detailsError) && (
+        <div className={`mb-3 text-xs ${detailsError ? 'text-red-600' : 'opacity-70'}`}>
+          {detailsError || 'Loading object details...'}
+        </div>
+      )}
       <div className={wrapGrid}>
         {/* Key (left) with copy icon left of label */}
         <div className={rowClass}>
@@ -329,7 +358,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
         {/* Last modified (right) */}
         <div className={rowClass}>
           <span className={labelClass}><span>Last modified:</span></span>
-          <span className={`font-mono break-all ${valueClass}`}>{details?.lastModified ? new Date(details.lastModified).toLocaleString() : '-'}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{mergedDetails?.lastModified ? new Date(mergedDetails.lastModified).toLocaleString() : '-'}</span>
         </div>
 
         {/* Filename (left) with copy icon */}
@@ -376,7 +405,7 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
         {/* Storage class (right) */}
         <div className={rowClass}>
           <span className={labelClass}><span>Storage class:</span></span>
-          <span className={`font-mono break-all ${valueClass}`}>{details?.storageClass ?? ''}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{mergedDetails?.storageClass ?? ''}</span>
         </div>
 
         {/* ETag (left) with copy */}
@@ -387,20 +416,80 @@ function ObjectPropsTables({ bucket, keyStr, details }: { bucket?: string; keySt
               className="icon-btn icon-btn-sm"
               title="Copy ETag"
               aria-label="Copy ETag"
-              disabled={!details?.etag}
-              onClick={async () => { if (!details?.etag) return; try { await navigator.clipboard.writeText(details.etag) } catch {}; showCopiedTooltip(etagBtnRef.current) }}
+              disabled={!mergedDetails?.etag}
+              onClick={async () => { if (!mergedDetails?.etag) return; try { await navigator.clipboard.writeText(mergedDetails.etag) } catch {}; showCopiedTooltip(etagBtnRef.current) }}
             >
               <CopyIcon />
             </button>
             <span>ETag:</span>
           </span>
-          <span className={`font-mono break-all ${valueClass}`}>{details?.etag ?? ''}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{mergedDetails?.etag ?? ''}</span>
         </div>
 
         {/* Size (right) */}
         <div className={rowClass}>
           <span className={labelClass}><span>Size:</span></span>
-          <span className={`font-mono break-all ${valueClass}`}>{formatSize(details?.size || 0)}</span>
+          <span className={`font-mono break-all ${valueClass}`}>{formatSize(mergedDetails?.size || 0)}</span>
+        </div>
+
+        <div className={rowClass}>
+          <span className={labelClass}><span>Content type:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>{mergedDetails?.contentType ?? '-'}</span>
+        </div>
+
+        <div className={rowClass}>
+          <span className={labelClass}><span>Cache control:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>{mergedDetails?.cacheControl ?? '-'}</span>
+        </div>
+
+        <div className={rowClass}>
+          <span className={labelClass}><span>Encryption:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>{mergedDetails?.serverSideEncryption ?? '-'}</span>
+        </div>
+
+        <div className={rowClass}>
+          <span className={labelClass}><span>Version ID:</span></span>
+          <span className={`font-mono break-all ${valueClass}`}>{mergedDetails?.versionId ?? '-'}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded border border-default overflow-hidden">
+          <div className="px-3 py-2 bg-header border-b border-default text-xs uppercase opacity-70">Metadata</div>
+          <div className="p-3 text-xs">
+            {mergedDetails?.metadata && Object.keys(mergedDetails.metadata).length > 0 ? (
+              <div className="space-y-2">
+                {Object.entries(mergedDetails.metadata).map(([key, value]) => (
+                  <div key={key} className="grid grid-cols-[10rem_1fr] gap-2">
+                    <div className="font-mono opacity-70 break-all">{key}</div>
+                    <div className="font-mono break-all">{value}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="opacity-60">No custom metadata.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded border border-default overflow-hidden">
+          <div className="px-3 py-2 bg-header border-b border-default text-xs uppercase opacity-70">Tags</div>
+          <div className="p-3 text-xs">
+            {mergedDetails?.tagsError && (!mergedDetails.tags || mergedDetails.tags.length === 0) ? (
+              <div className="text-red-600 break-words">{mergedDetails.tagsError}</div>
+            ) : mergedDetails?.tags && mergedDetails.tags.length > 0 ? (
+              <div className="space-y-2">
+                {mergedDetails.tags.map((tag) => (
+                  <div key={`${tag.key}:${tag.value}`} className="grid grid-cols-[10rem_1fr] gap-2">
+                    <div className="font-mono opacity-70 break-all">{tag.key}</div>
+                    <div className="font-mono break-all">{tag.value}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="opacity-60">No object tags.</div>
+            )}
+          </div>
         </div>
       </div>
 

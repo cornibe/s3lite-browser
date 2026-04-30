@@ -1,15 +1,47 @@
-import { S3Client, ListBucketsCommand, ListObjectsV2Command, CreateBucketCommand, DeleteObjectCommand, DeleteObjectsCommand, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, ListBucketsCommand, ListObjectsV2Command, CreateBucketCommand, DeleteObjectCommand, DeleteObjectsCommand, PutObjectCommand, GetObjectCommand, HeadObjectCommand, CopyObjectCommand, GetObjectTaggingCommand } from '@aws-sdk/client-s3'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { getLogger } from './log'
 import * as transfers from './transfers'
-import type { S3InitParams, ListObjectsParams, ListObjectsResult, ProfileInfo, FolderStatsPageParams, FolderStatsPageResult } from './types'
+import type { S3InitParams, ListObjectsParams, ListObjectsResult, ProfileInfo, FolderStatsPageParams, FolderStatsPageResult, ObjectActionError, ObjectActionEvent, StartObjectActionParams } from './types'
 
 let client: S3Client | null = null
 let currentProfile: string | undefined
 let overrideCredsPath: string | undefined
 let overrideConfigPath: string | undefined
+const clientCache = new Map<string, { client: S3Client; region: string }>()
+const objectActionAbortMap = new Map<string, { aborted: boolean }>()
+
+function getCredentialsPath() {
+  return overrideCredsPath || process.env.AWS_SHARED_CREDENTIALS_FILE || path.join(os.homedir(), '.aws', 'credentials')
+}
+
+function getConfigPath() {
+  return overrideConfigPath || process.env.AWS_CONFIG_FILE || path.join(os.homedir(), '.aws', 'config')
+}
+
+function getClientCacheKey(profile: string | undefined, credentialsPath: string, configPath: string) {
+  return JSON.stringify({ profile: profile || '', credentialsPath, configPath })
+}
+
+function applyAwsEnvironment(profile: string | undefined, credentialsPath: string, configPath: string) {
+  process.env.AWS_SDK_LOAD_CONFIG = '1'
+  if (profile) process.env.AWS_PROFILE = profile
+  else delete process.env.AWS_PROFILE
+  process.env.AWS_SHARED_CREDENTIALS_FILE = credentialsPath
+  process.env.AWS_CONFIG_FILE = configPath
+}
+
+function clearClientState() {
+  client = null
+  transfers.bindS3Client(null)
+}
+
+function clearClientCache() {
+  clientCache.clear()
+  clearClientState()
+}
 
 function ensureClient() {
   if (!client) throw new Error('S3 client not initialized. Connect to a profile first.')
@@ -22,18 +54,26 @@ export function getClient(): S3Client {
 
 export async function init(params: S3InitParams) {
   currentProfile = params.profile
-  process.env.AWS_SDK_LOAD_CONFIG = '1'
-  if (currentProfile) process.env.AWS_PROFILE = currentProfile
-  // Respect in-app override of credentials/config paths so the SDK loads from them
-  if (overrideCredsPath) process.env.AWS_SHARED_CREDENTIALS_FILE = overrideCredsPath
-  if (overrideConfigPath) process.env.AWS_CONFIG_FILE = overrideConfigPath
-  // Clear any previous client so calls after a failed init don't use a stale client
-  client = null
+  const credentialsPath = getCredentialsPath()
+  const configPath = getConfigPath()
+  applyAwsEnvironment(currentProfile, credentialsPath, configPath)
+  const cacheKey = getClientCacheKey(currentProfile, credentialsPath, configPath)
+  const cached = clientCache.get(cacheKey)
+  if (cached) {
+    client = cached.client
+    transfers.bindS3Client(client)
+    getLogger().info('aws', 's3 client reused', { profile: currentProfile || null, region: cached.region })
+    return
+  }
+
+  // Clear any previous active client so calls after a failed init don't use a stale client.
+  clearClientState()
   const region = await resolveRegion(currentProfile)
   if (!region) {
     throw new Error(`Could not resolve region${currentProfile ? ` for profile "${currentProfile}"` : ''}. Set region in ~/.aws/config or credentials, or export AWS_REGION.`)
   }
   client = new S3Client({ region })
+  clientCache.set(cacheKey, { client, region })
   transfers.bindS3Client(client)
   getLogger().info('aws', 's3 client initialized', { profile: currentProfile || null, region })
 }
@@ -149,6 +189,173 @@ export async function listObjectsRecursive(params: ListObjectsParams): Promise<L
   }
 }
 
+function normalizePrefix(prefix?: string) {
+  const trimmed = (prefix || '').trim().replace(/^\/+/, '')
+  if (!trimmed) return ''
+  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`
+}
+
+function basenameFromKey(key: string) {
+  const parts = key.split('/').filter(Boolean)
+  return parts[parts.length - 1] || key
+}
+
+async function listAllKeys(bucket: string, prefix: string): Promise<string[]> {
+  const c = ensureClient()
+  const keys: string[] = []
+  let continuationToken: string | undefined = undefined
+  do {
+    const out = await c.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+      MaxKeys: 1000
+    }))
+    for (const item of out.Contents || []) {
+      if (item.Key) keys.push(item.Key)
+    }
+    continuationToken = out.IsTruncated ? out.NextContinuationToken : undefined
+  } while (continuationToken)
+  return keys
+}
+
+async function buildObjectActionPlan(params: StartObjectActionParams) {
+  const destinationPrefix = normalizePrefix(params.destinationPrefix)
+  const planned = [] as Array<{ sourceKey: string; destinationKey: string }>
+  const seenSourceKeys = new Set<string>()
+
+  for (const item of params.items) {
+    if (item.type === 'object') {
+      if (seenSourceKeys.has(item.key)) continue
+      seenSourceKeys.add(item.key)
+      planned.push({
+        sourceKey: item.key,
+        destinationKey: `${destinationPrefix}${basenameFromKey(item.key)}`
+      })
+      continue
+    }
+
+    const sourcePrefix = normalizePrefix(item.prefix)
+    const folderName = basenameFromKey(sourcePrefix)
+    const destinationRoot = `${destinationPrefix}${folderName}/`
+    const keys = await listAllKeys(params.sourceBucket, sourcePrefix)
+    if (keys.length === 0) {
+      if (!seenSourceKeys.has(sourcePrefix)) {
+        seenSourceKeys.add(sourcePrefix)
+        planned.push({ sourceKey: sourcePrefix, destinationKey: destinationRoot })
+      }
+      continue
+    }
+
+    for (const key of keys) {
+      if (seenSourceKeys.has(key)) continue
+      seenSourceKeys.add(key)
+      const relative = key.startsWith(sourcePrefix) ? key.slice(sourcePrefix.length) : basenameFromKey(key)
+      planned.push({
+        sourceKey: key,
+        destinationKey: relative ? `${destinationRoot}${relative}` : destinationRoot
+      })
+    }
+  }
+
+  return planned
+}
+
+export async function executeObjectAction(
+  params: StartObjectActionParams,
+  operationId: string,
+  onEvent: (evt: ObjectActionEvent) => void
+): Promise<{ total: number; completed: number; failed: number; errors: ObjectActionError[] }> {
+  const abortState = { aborted: false }
+  objectActionAbortMap.set(operationId, abortState)
+  const plan = await buildObjectActionPlan(params)
+  const errors: ObjectActionError[] = []
+  let completed = 0
+  let failed = 0
+
+  try {
+    onEvent({
+      type: 'started',
+      operationId,
+      mode: params.mode,
+      total: plan.length,
+      completed,
+      failed
+    })
+
+    for (const step of plan) {
+      if (abortState.aborted) {
+        onEvent({
+          type: 'aborted',
+          operationId,
+          mode: params.mode,
+          total: plan.length,
+          completed,
+          failed,
+          errors
+        })
+        return { total: plan.length, completed, failed, errors }
+      }
+
+      try {
+        if (params.sourceBucket === params.destinationBucket && step.sourceKey === step.destinationKey) {
+          throw new Error('Source and destination are the same.')
+        }
+        await copyObject({
+          sourceBucket: params.sourceBucket,
+          sourceKey: step.sourceKey,
+          destinationBucket: params.destinationBucket,
+          destinationKey: step.destinationKey
+        })
+        if (abortState.aborted) {
+          onEvent({
+            type: 'aborted',
+            operationId,
+            mode: params.mode,
+            total: plan.length,
+            completed,
+            failed,
+            errors
+          })
+          return { total: plan.length, completed, failed, errors }
+        }
+        if (params.mode === 'move') {
+          await deleteObject(params.sourceBucket, step.sourceKey)
+        }
+        completed += 1
+      } catch (err) {
+        failed += 1
+        errors.push({
+          sourceKey: step.sourceKey,
+          destinationKey: step.destinationKey,
+          error: (err as Error)?.message || 'Operation failed'
+        })
+      }
+
+      onEvent({
+        type: 'progress',
+        operationId,
+        mode: params.mode,
+        total: plan.length,
+        completed,
+        failed,
+        currentSourceKey: step.sourceKey,
+        currentDestinationKey: step.destinationKey
+      })
+    }
+
+    return { total: plan.length, completed, failed, errors }
+  } finally {
+    objectActionAbortMap.delete(operationId)
+  }
+}
+
+export function cancelObjectAction(operationId: string) {
+  const state = objectActionAbortMap.get(operationId)
+  if (!state) throw new Error('Object action is not running.')
+  state.aborted = true
+}
+
 function parseIni(content: string) {
   const sections: Record<string, Record<string, string>> = {}
   let current: string | null = null
@@ -250,6 +457,7 @@ export async function listProfiles(): Promise<ProfileInfo[]> {
 export function setAwsFiles(params: { credentialsFile?: string; configFile?: string }) {
   overrideCredsPath = params.credentialsFile
   overrideConfigPath = params.configFile
+  clearClientCache()
 }
 
 export async function getAwsFiles(): Promise<{ credentialsPath: string; configPath: string; credentialsText: string; configText: string }> {
@@ -261,8 +469,8 @@ export async function getAwsFiles(): Promise<{ credentialsPath: string; configPa
 }
 
 export async function writeAwsFiles(params: { credentialsText: string; configText: string }): Promise<void> {
-  const credsPath = overrideCredsPath || process.env.AWS_SHARED_CREDENTIALS_FILE || path.join(os.homedir(), '.aws', 'credentials')
-  const configPath = overrideConfigPath || process.env.AWS_CONFIG_FILE || path.join(os.homedir(), '.aws', 'config')
+  const credsPath = getCredentialsPath()
+  const configPath = getConfigPath()
   // ensure folder exists
   const awsDir = path.dirname(credsPath)
   try { await fs.promises.mkdir(awsDir, { recursive: true }) } catch {}
@@ -301,6 +509,7 @@ export async function writeAwsFiles(params: { credentialsText: string; configTex
     const msg = (e as Error)?.message || String(e)
     getLogger().warn('fs', 'writeAwsFiles verify error', { error: msg })
   }
+  clearClientCache()
 }
 
 function toFriendlyError(context: string, err: unknown): Error {
@@ -492,6 +701,70 @@ export async function createFolder(bucket: string, prefix: string): Promise<void
     getLogger().info('aws', 'createFolder', { bucket, prefix: folderKey, durationMs: Date.now() - start })
   } catch (err) {
     throw toFriendlyError(`Create folder s3://${bucket}/${prefix}`, err)
+  }
+}
+
+export async function copyObject(params: { sourceBucket: string; sourceKey: string; destinationBucket: string; destinationKey: string }): Promise<void> {
+  const c = ensureClient()
+  const start = Date.now()
+  try {
+    const copySource = `/${params.sourceBucket}/${params.sourceKey.split('/').map(part => encodeURIComponent(part)).join('/')}`
+    await c.send(new CopyObjectCommand({
+      Bucket: params.destinationBucket,
+      Key: params.destinationKey,
+      CopySource: copySource
+    }))
+    getLogger().info('aws', 'copyObject', {
+      sourceBucket: params.sourceBucket,
+      sourceKey: params.sourceKey,
+      destinationBucket: params.destinationBucket,
+      destinationKey: params.destinationKey,
+      durationMs: Date.now() - start
+    })
+  } catch (err) {
+    throw toFriendlyError(`Copy object s3://${params.sourceBucket}/${params.sourceKey}`, err)
+  }
+}
+
+export async function getObjectDetails(params: { bucket: string; key: string }): Promise<import('./types').ObjectDetailsResult> {
+  const c = ensureClient()
+  const start = Date.now()
+  try {
+    const head = await c.send(new HeadObjectCommand({ Bucket: params.bucket, Key: params.key }))
+    let tags: Array<{ key: string; value: string }> | undefined = undefined
+    let tagsError: string | undefined = undefined
+    try {
+      const tagging = await c.send(new GetObjectTaggingCommand({ Bucket: params.bucket, Key: params.key }))
+      tags = (tagging.TagSet || []).map(tag => ({ key: tag.Key || '', value: tag.Value || '' })).filter(tag => tag.key.length > 0)
+    } catch (err) {
+      tagsError = (err as Error)?.message || 'Unable to load object tags'
+      getLogger().warn('aws', 'getObjectDetails tags failed', { bucket: params.bucket, key: params.key, error: tagsError })
+    }
+
+    const result = {
+      key: params.key,
+      size: Number(head.ContentLength || 0),
+      lastModified: head.LastModified ? new Date(head.LastModified).toISOString() : undefined,
+      etag: head.ETag || undefined,
+      storageClass: head.StorageClass || undefined,
+      contentType: head.ContentType || undefined,
+      contentEncoding: head.ContentEncoding || undefined,
+      contentLanguage: head.ContentLanguage || undefined,
+      cacheControl: head.CacheControl || undefined,
+      contentDisposition: head.ContentDisposition || undefined,
+      expires: head.Expires ? new Date(head.Expires).toISOString() : undefined,
+      metadata: head.Metadata || {},
+      tags,
+      versionId: head.VersionId || undefined,
+      serverSideEncryption: head.ServerSideEncryption || undefined,
+      restore: head.Restore || undefined,
+      websiteRedirectLocation: head.WebsiteRedirectLocation || undefined,
+      tagsError
+    }
+    getLogger().debug('aws', 'getObjectDetails', { bucket: params.bucket, key: params.key, tags: tags?.length || 0, durationMs: Date.now() - start })
+    return result
+  } catch (err) {
+    throw toFriendlyError(`Get object details s3://${params.bucket}/${params.key}`, err)
   }
 }
 

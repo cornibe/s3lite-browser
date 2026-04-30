@@ -8,6 +8,42 @@ import CreateFolderModal from './CreateFolderModal'
 import DeleteConfirmationModal from './DeleteConfirmationModal'
 import MountLocationModal from './MountLocationModal'
 import ExportObjectListModal from './ExportObjectListModal'
+import CopyObjectModal from './CopyObjectModal'
+import BatchObjectActionModal from './BatchObjectActionModal'
+import ObjectActionProgressModal from './ObjectActionProgressModal'
+import type { ObjectActionError, ObjectActionEvent, ObjectActionItem } from '../../electron/types'
+
+type ObjectActionMode = 'copy' | 'move' | 'rename'
+
+type ObjectActionInit = {
+  mode: ObjectActionMode
+  sourceBucket: string
+  sourceKey: string
+  destinationBucket: string
+  destinationKey: string
+}
+
+type BatchObjectActionInit = {
+  mode: 'copy' | 'move'
+  sourceBucket: string
+  destinationBucket: string
+  destinationPrefix: string
+  items: Entry[]
+}
+
+type ObjectActionProgressState = {
+  operationId?: string
+  mode: 'copy' | 'move'
+  status: 'starting' | 'running' | 'complete' | 'error' | 'aborted'
+  total: number
+  completed: number
+  failed: number
+  currentSourceKey?: string
+  currentDestinationKey?: string
+  errors: ObjectActionError[]
+  fatalError?: string
+  hidden?: boolean
+}
 
 type Entry = (
   | { type: 'folder'; data: S3Folder }
@@ -205,6 +241,9 @@ export default function ObjectExplorer() {
   const [showCreateFolder, setShowCreateFolder] = useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = useState(null as any)
   const [showExport, setShowExport] = useState(false)
+  const [copyObjectInit, setCopyObjectInit] = useState(null as null | ObjectActionInit)
+  const [batchObjectActionInit, setBatchObjectActionInit] = useState(null as null | BatchObjectActionInit)
+  const [objectActionProgress, setObjectActionProgress] = useState(null as null | ObjectActionProgressState)
   // Mount modal state
   const [mountInit, setMountInit] = useState(null as { bucket: string; prefix?: string } | null)
   // Edit path state
@@ -1027,6 +1066,219 @@ export default function ObjectExplorer() {
     setContextMenu(null)
   }
 
+  const getActionEntries = (item?: Entry) => {
+    if (item) return [item]
+    if (selectedSet.size > 0) return Array.from(selectedSet).map(k => keyToEntry.get(k)!).filter(Boolean)
+    const fallback = items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
+    return fallback ? [fallback] : []
+  }
+
+  const handleOpenObjectAction = (mode: ObjectActionMode, item?: Entry) => {
+    const actionEntries = getActionEntries(item)
+    if (mode !== 'rename' && bucket && actionEntries.length > 0) {
+      const shouldBatch = actionEntries.length > 1 || actionEntries.some(entry => entry.type === 'folder')
+      if (shouldBatch) {
+        setBatchObjectActionInit({
+          mode,
+          sourceBucket: bucket,
+          destinationBucket: bucket,
+          destinationPrefix: prefix || '',
+          items: actionEntries
+        })
+        setContextMenu(null)
+        return
+      }
+    }
+    const target = item || items.find(it => (it.type === 'object' ? it.data.key : it.data.prefix) === selectedKey)
+    if (!bucket || !target || target.type !== 'object') return
+    const fileName = target.data.key.split('/').slice(-1)[0] || target.data.key
+    const sourceParts = target.data.key.split('/')
+    const parentPrefix = sourceParts.length > 1 ? `${sourceParts.slice(0, -1).join('/')}/` : ''
+    const destinationPrefix = mode === 'rename' ? parentPrefix : (prefix || '')
+    const destinationKey = `${destinationPrefix}${fileName}`
+    setCopyObjectInit({
+      mode,
+      sourceBucket: bucket,
+      sourceKey: target.data.key,
+      destinationBucket: bucket,
+      destinationKey
+    })
+    setContextMenu(null)
+  }
+
+  const handleCopyObjectSubmit = async (input: { destinationBucket: string; destinationKey: string }) => {
+    if (!copyObjectInit) return
+    const copyResult = await (window as any).api.s3.copyObject({
+      sourceBucket: copyObjectInit.sourceBucket,
+      sourceKey: copyObjectInit.sourceKey,
+      destinationBucket: input.destinationBucket,
+      destinationKey: input.destinationKey
+    })
+    if (!copyResult.ok) {
+      throw new Error(copyResult.error)
+    }
+
+    if (copyObjectInit.mode === 'move' || copyObjectInit.mode === 'rename') {
+      const deleteResult = await (window as any).api.s3.deleteObject({
+        bucket: copyObjectInit.sourceBucket,
+        key: copyObjectInit.sourceKey
+      })
+      if (!deleteResult.ok) {
+        throw new Error(deleteResult.error)
+      }
+    }
+
+    const actionLabel = copyObjectInit.mode === 'copy' ? 'Copied' : copyObjectInit.mode === 'move' ? 'Moved' : 'Renamed'
+    showToast({
+      type: 'success',
+      message: `${actionLabel} to s3://${input.destinationBucket}/${input.destinationKey}`
+    })
+    setCopyObjectInit(null)
+    await refetch()
+  }
+
+  const handleBatchObjectActionSubmit = async (input: { destinationBucket: string; destinationPrefix: string }) => {
+    if (!batchObjectActionInit) return
+    const payloadItems: ObjectActionItem[] = batchObjectActionInit.items.map((entry) =>
+      entry.type === 'object'
+        ? { type: 'object', key: entry.data.key }
+        : { type: 'folder', prefix: entry.data.prefix }
+    )
+
+    setObjectActionProgress({
+      mode: batchObjectActionInit.mode,
+      status: 'starting',
+      total: 0,
+      completed: 0,
+      failed: 0,
+      errors: [],
+      hidden: false
+    })
+
+    const result = await (window as any).api.s3.startObjectAction({
+      mode: batchObjectActionInit.mode,
+      sourceBucket: batchObjectActionInit.sourceBucket,
+      destinationBucket: input.destinationBucket,
+      destinationPrefix: input.destinationPrefix,
+      items: payloadItems
+    })
+
+    if (!result.ok) {
+      setObjectActionProgress({
+        mode: batchObjectActionInit.mode,
+        status: 'error',
+        total: 0,
+        completed: 0,
+        failed: 0,
+        errors: [],
+        fatalError: result.error,
+        hidden: false
+      })
+      throw new Error(result.error)
+    }
+
+    setObjectActionProgress((prev) => prev ? { ...prev, operationId: result.operationId } : prev)
+    setBatchObjectActionInit(null)
+  }
+
+  useEffect(() => {
+    const off = (window as any).api?.s3?.onObjectActionEvent?.((evt: ObjectActionEvent) => {
+      setObjectActionProgress((prev) => {
+        if (!prev) return prev
+        if (prev.operationId && prev.operationId !== evt.operationId) return prev
+        if (evt.type === 'started') {
+          return {
+            operationId: evt.operationId,
+            mode: evt.mode,
+            status: evt.total > 0 ? 'running' : 'complete',
+            total: evt.total,
+            completed: evt.completed,
+            failed: evt.failed,
+            errors: [],
+            hidden: false
+          }
+        }
+        if (evt.type === 'progress') {
+          return {
+            ...prev,
+            operationId: evt.operationId,
+            mode: evt.mode,
+            status: 'running',
+            total: evt.total,
+            completed: evt.completed,
+            failed: evt.failed,
+            currentSourceKey: evt.currentSourceKey,
+            currentDestinationKey: evt.currentDestinationKey
+          }
+        }
+        if (evt.type === 'aborted') {
+          void refetch()
+          showToast({ type: 'info', message: `${evt.mode === 'copy' ? 'Copy' : 'Move'} aborted` })
+          return {
+            ...prev,
+            operationId: evt.operationId,
+            mode: evt.mode,
+            status: 'aborted',
+            total: evt.total,
+            completed: evt.completed,
+            failed: evt.failed,
+            errors: evt.errors,
+            hidden: false
+          }
+        }
+        if (evt.type === 'complete') {
+          void refetch()
+          showToast({
+            type: evt.failed > 0 ? 'info' : 'success',
+            message: `${evt.mode === 'copy' ? 'Copy' : 'Move'} finished: ${evt.completed} completed${evt.failed > 0 ? `, ${evt.failed} failed` : ''}`
+          })
+          return {
+            ...prev,
+            operationId: evt.operationId,
+            mode: evt.mode,
+            status: 'complete',
+            total: evt.total,
+            completed: evt.completed,
+            failed: evt.failed,
+            errors: evt.errors,
+            hidden: false
+          }
+        }
+        void refetch()
+        showToast({ type: 'error', message: evt.error })
+        return {
+          ...prev,
+          operationId: evt.operationId,
+          mode: evt.mode,
+          status: 'error',
+          total: evt.total,
+          completed: evt.completed,
+          failed: evt.failed,
+          errors: evt.errors,
+          fatalError: evt.error,
+          hidden: false
+        }
+      })
+    })
+    return () => { if (typeof off === 'function') off() }
+  }, [refetch, showToast])
+
+  const abortObjectAction = async () => {
+    if (!objectActionProgress?.operationId) return
+    const result = await (window as any).api.s3.cancelObjectAction({ operationId: objectActionProgress.operationId })
+    if (!result.ok) {
+      showToast({ type: 'error', message: result.error || 'Failed to abort operation' })
+    }
+  }
+
+  const hideObjectActionProgress = () => {
+    setObjectActionProgress((prev) => prev ? { ...prev, hidden: true } : prev)
+  }
+
+  const showObjectActionProgress = () => {
+    setObjectActionProgress((prev) => prev ? { ...prev, hidden: false } : prev)
+  }
+
   const handleDeleteSelected = () => {
     const keys = Array.from(selectedSet)
     if (keys.length === 0) return
@@ -1482,6 +1734,22 @@ export default function ObjectExplorer() {
               ↓ Download{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
             </button>
             <button
+              onClick={() => handleOpenObjectAction('copy')}
+              className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
+              title={selectedSet.size > 1 ? `Copy ${selectedSet.size} selected items` : 'Copy selected item'}
+              disabled={selectedSet.size === 0 && !selectedKey}
+            >
+              ⧉ Copy{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
+            </button>
+            <button
+              onClick={() => handleOpenObjectAction('move')}
+              className="btn btn-primary text-xs disabled:opacity-50 cursor-pointer"
+              title={selectedSet.size > 1 ? `Move ${selectedSet.size} selected items` : 'Move selected item'}
+              disabled={selectedSet.size === 0 && !selectedKey}
+            >
+              ⇄ Move{selectedSet.size > 1 ? ` (${selectedSet.size})` : ''}
+            </button>
+            <button
               onClick={() => {
                 if (selectedSet.size > 1) {
                   handleDeleteSelected()
@@ -1508,6 +1776,19 @@ export default function ObjectExplorer() {
        ref={ctxMenuRef}
      >
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleDownload(contextMenu.item)}>Download</button>
+          {contextMenu.item?.type === 'object' && (
+            <>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('copy', contextMenu.item)}>Copy object</button>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('move', contextMenu.item)}>Move object</button>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('rename', contextMenu.item)}>Rename object</button>
+            </>
+          )}
+          {contextMenu.item?.type === 'folder' && (
+            <>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('copy', contextMenu.item)}>Copy folder</button>
+              <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleOpenObjectAction('move', contextMenu.item)}>Move folder</button>
+            </>
+          )}
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => handleProperties(contextMenu.item)}>Properties</button>
           <button className="block w-full text-left px-3 py-2 row-hover menu-item cursor-pointer" onClick={() => { setShowExport(true); setContextMenu(null) }}>Export object list</button>
           {contextMenu.item?.type === 'folder' && (
@@ -1598,6 +1879,52 @@ export default function ObjectExplorer() {
           return it ? [it] as any : []
         })()}
       />
+      <CopyObjectModal
+        isOpen={Boolean(copyObjectInit)}
+        sourceBucket={copyObjectInit?.sourceBucket || ''}
+        sourceKey={copyObjectInit?.sourceKey || ''}
+        defaultDestinationBucket={copyObjectInit?.destinationBucket || bucket || ''}
+        defaultDestinationKey={copyObjectInit?.destinationKey || ''}
+        title={copyObjectInit?.mode === 'copy' ? 'Copy Object' : copyObjectInit?.mode === 'move' ? 'Move Object' : 'Rename Object'}
+        submitLabel={copyObjectInit?.mode === 'copy' ? 'Copy Object' : copyObjectInit?.mode === 'move' ? 'Move Object' : 'Rename Object'}
+        onClose={() => setCopyObjectInit(null)}
+        onSubmit={handleCopyObjectSubmit}
+      />
+      <BatchObjectActionModal
+        isOpen={Boolean(batchObjectActionInit)}
+        mode={batchObjectActionInit?.mode || 'copy'}
+        objectCount={batchObjectActionInit?.items.filter(item => item.type === 'object').length || 0}
+        folderCount={batchObjectActionInit?.items.filter(item => item.type === 'folder').length || 0}
+        defaultDestinationBucket={batchObjectActionInit?.destinationBucket || bucket || ''}
+        defaultDestinationPrefix={batchObjectActionInit?.destinationPrefix || prefix || ''}
+        onClose={() => setBatchObjectActionInit(null)}
+        onSubmit={handleBatchObjectActionSubmit}
+      />
+      <ObjectActionProgressModal
+        isOpen={Boolean(objectActionProgress && !objectActionProgress.hidden)}
+        mode={objectActionProgress?.mode || 'copy'}
+        total={objectActionProgress?.total || 0}
+        completed={objectActionProgress?.completed || 0}
+        failed={objectActionProgress?.failed || 0}
+        currentSourceKey={objectActionProgress?.currentSourceKey}
+        currentDestinationKey={objectActionProgress?.currentDestinationKey}
+        errors={objectActionProgress?.errors || []}
+        status={objectActionProgress?.status || 'starting'}
+        fatalError={objectActionProgress?.fatalError}
+        onAbort={() => { void abortObjectAction() }}
+        onBackground={hideObjectActionProgress}
+        onClose={() => setObjectActionProgress(null)}
+      />
+      {objectActionProgress && objectActionProgress.hidden && (objectActionProgress.status === 'starting' || objectActionProgress.status === 'running') && (
+        <div className="fixed bottom-4 right-4 z-40 rounded menu-bg border border-default shadow-lg px-3 py-2 text-xs max-w-[24rem]">
+          <div className="font-semibold mb-1">{objectActionProgress.mode === 'copy' ? 'Copy' : 'Move'} running in background</div>
+          <div className="opacity-80 mb-2">{objectActionProgress.completed + objectActionProgress.failed} of {objectActionProgress.total || '...'} processed</div>
+          <div className="flex items-center justify-end gap-2">
+            <button className="btn btn-secondary text-xs cursor-pointer" onClick={showObjectActionProgress}>Show</button>
+            <button className="btn text-xs cursor-pointer" style={{ backgroundColor: 'rgba(220,38,38,0.12)', color: 'var(--color-fg)' }} onClick={() => { void abortObjectAction() }}>Abort</button>
+          </div>
+        </div>
+      )}
 
       {/* Auto-fetch progress modal */}
       {showFetchProgress && (

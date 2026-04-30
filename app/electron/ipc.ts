@@ -7,7 +7,136 @@ import * as path from 'path'
 import { getLogger, safeMeta, redact } from './log'
 import { loadSettingsFile, saveSettingsFile, openSettingsDir } from './settings'
 
+function emitAwsEvent(payload: { ts?: number; scope: 's3' | 'xfer'; action: string; bucket?: string; key?: string; prefix?: string; status: 'ok' | 'error'; durationMs?: number; error?: string; extra?: any }) {
+  try {
+    const evt = { ts: Date.now(), ...payload }
+    BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, evt))
+  } catch {}
+}
+
 export function registerIpc() {
+  const registerStartObjectActionHandler = (channel: string) => {
+    ipcMain.handle(channel, async (e, params) => {
+      const win = BrowserWindow.fromWebContents(e.sender)!
+      const operationId = `objact_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`
+      const startedAt = Date.now()
+      try {
+        emitAwsEvent({
+          scope: 's3',
+          action: params.mode === 'copy' ? 'StartCopyObjects' : 'StartMoveObjects',
+          bucket: params.destinationBucket,
+          prefix: params.destinationPrefix ?? '',
+          status: 'ok',
+          extra: {
+            operationId,
+            sourceBucket: params.sourceBucket,
+            itemCount: Array.isArray(params.items) ? params.items.length : 0
+          }
+        })
+        void (async () => {
+          try {
+            const result = await s3.executeObjectAction(params, operationId, (evt) => {
+              if (evt.type === 'progress') {
+                emitAwsEvent({
+                  scope: 's3',
+                  action: evt.mode === 'copy' ? 'CopyObject' : 'MoveObject',
+                  bucket: params.destinationBucket,
+                  key: evt.currentDestinationKey,
+                  status: 'ok',
+                  durationMs: Date.now() - startedAt,
+                  extra: {
+                    operationId: evt.operationId,
+                    sourceBucket: params.sourceBucket,
+                    sourceKey: evt.currentSourceKey,
+                    completed: evt.completed,
+                    failed: evt.failed,
+                    total: evt.total
+                  }
+                })
+              } else if (evt.type === 'aborted') {
+                emitAwsEvent({
+                  scope: 's3',
+                  action: evt.mode === 'copy' ? 'CopyObjects' : 'MoveObjects',
+                  bucket: params.destinationBucket,
+                  prefix: params.destinationPrefix ?? '',
+                  status: 'error',
+                  durationMs: Date.now() - startedAt,
+                  error: 'Operation aborted',
+                  extra: {
+                    operationId: evt.operationId,
+                    completed: evt.completed,
+                    failed: evt.failed,
+                    total: evt.total,
+                    errors: evt.errors.length
+                  }
+                })
+              }
+              try { win.webContents.send(IpcChannels.S3_OBJECT_ACTION_EVENT, evt) } catch {}
+            })
+            try {
+              emitAwsEvent({
+                scope: 's3',
+                action: params.mode === 'copy' ? 'CopyObjects' : 'MoveObjects',
+                bucket: params.destinationBucket,
+                prefix: params.destinationPrefix ?? '',
+                status: result.failed > 0 ? 'error' : 'ok',
+                durationMs: Date.now() - startedAt,
+                error: result.failed > 0 ? `${result.failed} item(s) failed` : undefined,
+                extra: {
+                  operationId,
+                  sourceBucket: params.sourceBucket,
+                  completed: result.completed,
+                  failed: result.failed,
+                  total: result.total
+                }
+              })
+              win.webContents.send(IpcChannels.S3_OBJECT_ACTION_EVENT, {
+                type: 'complete',
+                operationId,
+                mode: params.mode,
+                total: result.total,
+                completed: result.completed,
+                failed: result.failed,
+                errors: result.errors
+              })
+            } catch {}
+          } catch (err) {
+            const msg = (err as Error)?.message || 'Object action failed'
+            try {
+              emitAwsEvent({
+                scope: 's3',
+                action: params.mode === 'copy' ? 'CopyObjects' : 'MoveObjects',
+                bucket: params.destinationBucket,
+                prefix: params.destinationPrefix ?? '',
+                status: 'error',
+                durationMs: Date.now() - startedAt,
+                error: msg,
+                extra: {
+                  operationId,
+                  sourceBucket: params.sourceBucket
+                }
+              })
+              win.webContents.send(IpcChannels.S3_OBJECT_ACTION_EVENT, {
+                type: 'error',
+                operationId,
+                mode: params.mode,
+                total: 0,
+                completed: 0,
+                failed: 0,
+                error: msg,
+                errors: []
+              })
+            } catch {}
+          }
+        })()
+        return { ok: true as const, operationId }
+      } catch (e2) {
+        const msg = (e2 as Error)?.message || 'Failed to start object action'
+        return { ok: false as const, error: msg }
+      }
+    })
+  }
+
   ipcMain.handle(IpcChannels.S3_INIT, async (_e, params) => {
     const t = Date.now()
     try {
@@ -25,12 +154,12 @@ export function registerIpc() {
     try {
       const out = await s3.listBuckets()
       getLogger().debug('ipc', 's3:listBuckets ok', { durationMs: Date.now() - t, count: out.length })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListBuckets', status: 'ok', durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'ListBuckets', status: 'ok', durationMs: Date.now() - t })
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to list buckets'
       getLogger().warn('ipc', 's3:listBuckets error', { durationMs: Date.now() - t, error: msg })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListBuckets', status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'ListBuckets', status: 'error', error: msg, durationMs: Date.now() - t })
       throw e
     }
   })
@@ -39,12 +168,12 @@ export function registerIpc() {
     try {
       const out = await s3.listObjects(params)
       getLogger().debug('ipc', 's3:listObjects ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', folders: out.folders.length, objects: out.objects.length, truncated: Boolean(out.nextToken) })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjects', bucket: params.bucket, prefix: params.prefix ?? '', status: 'ok', durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'ListObjects', bucket: params.bucket, prefix: params.prefix ?? '', status: 'ok', durationMs: Date.now() - t })
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to list objects'
       getLogger().warn('ipc', 's3:listObjects error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', error: msg })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjects', bucket: params.bucket, prefix: params.prefix ?? '', status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'ListObjects', bucket: params.bucket, prefix: params.prefix ?? '', status: 'error', error: msg, durationMs: Date.now() - t })
       throw e
     }
   })
@@ -53,12 +182,12 @@ export function registerIpc() {
     try {
       const out = await s3.listObjectsRecursive(params)
       getLogger().debug('ipc', 's3:listObjectsRecursive ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', objects: out.objects.length, truncated: Boolean(out.nextToken) })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjectsRecursive', bucket: params.bucket, prefix: params.prefix ?? '', status: 'ok', durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'ListObjectsRecursive', bucket: params.bucket, prefix: params.prefix ?? '', status: 'ok', durationMs: Date.now() - t })
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to list objects recursively'
       getLogger().warn('ipc', 's3:listObjectsRecursive error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix ?? '', error: msg })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'ListObjectsRecursive', bucket: params.bucket, prefix: params.prefix ?? '', status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'ListObjectsRecursive', bucket: params.bucket, prefix: params.prefix ?? '', status: 'error', error: msg, durationMs: Date.now() - t })
       throw e
     }
   })
@@ -67,10 +196,26 @@ export function registerIpc() {
     try {
       const out = await s3.folderStatsPage(params)
       getLogger().debug('ipc', 's3:folderStatsPage ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, objects: out.objects, files: out.files, folders: out.folders, bytes: out.bytes, truncated: Boolean(out.nextToken) })
+      emitAwsEvent({ scope: 's3', action: 'FolderStatsPage', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t, extra: { objects: out.objects, files: out.files, folders: out.folders, bytes: out.bytes } })
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to scan folder'
       getLogger().warn('ipc', 's3:folderStatsPage error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
+      emitAwsEvent({ scope: 's3', action: 'FolderStatsPage', bucket: params.bucket, prefix: params.prefix, status: 'error', error: msg, durationMs: Date.now() - t })
+      throw e
+    }
+  })
+  ipcMain.handle(IpcChannels.S3_GET_OBJECT_DETAILS, async (_e, params) => {
+    const t = Date.now()
+    try {
+      const out = await s3.getObjectDetails(params)
+      getLogger().debug('ipc', 's3:getObjectDetails ok', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, tags: out.tags?.length || 0 })
+      emitAwsEvent({ scope: 's3', action: 'GetObjectDetails', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t, extra: { tags: out.tags?.length || 0 } })
+      return out
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to get object details'
+      getLogger().warn('ipc', 's3:getObjectDetails error', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, error: msg })
+      emitAwsEvent({ scope: 's3', action: 'GetObjectDetails', bucket: params.bucket, key: params.key, status: 'error', error: msg, durationMs: Date.now() - t })
       throw e
     }
   })
@@ -79,10 +224,12 @@ export function registerIpc() {
     try {
       const out = await s3.getObjectPreview(params)
       getLogger().debug('ipc', 's3:getObjectPreview ok', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, bytes: (out.text?.length || 0), type: out.contentType || null, binary: out.isBinary })
+      emitAwsEvent({ scope: 's3', action: 'GetObjectPreview', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t, extra: { bytes: out.text?.length || 0, type: out.contentType || null, binary: out.isBinary } })
       return out
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to get object preview'
       getLogger().warn('ipc', 's3:getObjectPreview error', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, error: msg })
+      emitAwsEvent({ scope: 's3', action: 'GetObjectPreview', bucket: params.bucket, key: params.key, status: 'error', error: msg, durationMs: Date.now() - t })
       throw e
     }
   })
@@ -133,10 +280,12 @@ export function registerIpc() {
     try {
       await s3.createBucket(params.bucketName, params.region)
       getLogger().info('ipc', 's3:createBucket ok', { durationMs: Date.now() - t, bucket: params.bucketName, region: params.region || 'us-east-1' })
+      emitAwsEvent({ scope: 's3', action: 'CreateBucket', bucket: params.bucketName, status: 'ok', durationMs: Date.now() - t, extra: { region: params.region || 'us-east-1' } })
       return { ok: true as const }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to create bucket'
       getLogger().warn('ipc', 's3:createBucket error', { durationMs: Date.now() - t, bucket: params.bucketName, error: msg })
+      emitAwsEvent({ scope: 's3', action: 'CreateBucket', bucket: params.bucketName, status: 'error', error: msg, durationMs: Date.now() - t, extra: { region: params.region || 'us-east-1' } })
       return { ok: false as const, error: msg }
     }
   })
@@ -146,12 +295,12 @@ export function registerIpc() {
     try {
       await s3.deleteObject(params.bucket, params.key)
       getLogger().info('ipc', 's3:deleteObject ok', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObject', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'DeleteObject', bucket: params.bucket, key: params.key, status: 'ok', durationMs: Date.now() - t })
       return { ok: true as const }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to delete object'
       getLogger().warn('ipc', 's3:deleteObject error', { durationMs: Date.now() - t, bucket: params.bucket, key: params.key, error: msg })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObject', bucket: params.bucket, key: params.key, status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'DeleteObject', bucket: params.bucket, key: params.key, status: 'error', error: msg, durationMs: Date.now() - t })
       return { ok: false as const, error: msg }
     }
   })
@@ -161,12 +310,12 @@ export function registerIpc() {
     try {
       const result = await s3.deleteObjects(params.bucket, params.keys)
       getLogger().info('ipc', 's3:deleteObjects ok', { durationMs: Date.now() - t, bucket: params.bucket, totalKeys: params.keys.length, deleted: result.deleted.length, errors: result.errors.length })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObjects', bucket: params.bucket, status: 'ok', durationMs: Date.now() - t, extra: { totalKeys: params.keys.length, deleted: result.deleted.length, errors: result.errors.length } })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'DeleteObjects', bucket: params.bucket, status: 'ok', durationMs: Date.now() - t, extra: { totalKeys: params.keys.length, deleted: result.deleted.length, errors: result.errors.length } })
       return { ok: true as const, result }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to delete objects'
       getLogger().warn('ipc', 's3:deleteObjects error', { durationMs: Date.now() - t, bucket: params.bucket, totalKeys: params.keys.length, error: msg })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteObjects', bucket: params.bucket, status: 'error', error: msg, durationMs: Date.now() - t, extra: { totalKeys: params.keys.length } })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'DeleteObjects', bucket: params.bucket, status: 'error', error: msg, durationMs: Date.now() - t, extra: { totalKeys: params.keys.length } })
       return { ok: false as const, error: msg }
     }
   })
@@ -176,12 +325,12 @@ export function registerIpc() {
     try {
       const result = await s3.deleteFolder(params.bucket, params.prefix)
       getLogger().info('ipc', 's3:deleteFolder ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, deleted: result.deleted.length, errors: result.errors.length })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteFolder', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t, extra: { deleted: result.deleted.length, errors: result.errors.length } })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'DeleteFolder', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t, extra: { deleted: result.deleted.length, errors: result.errors.length } })
       return { ok: true as const, result }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to delete folder'
       getLogger().warn('ipc', 's3:deleteFolder error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
-  try { BrowserWindow.getAllWindows().forEach(w => w.webContents.send(IpcChannels.LOG_AWS_EVENT, { ts: Date.now(), scope: 's3', action: 'DeleteFolder', bucket: params.bucket, prefix: params.prefix, status: 'error', error: msg, durationMs: Date.now() - t })) } catch {}
+      emitAwsEvent({ scope: 's3', action: 'DeleteFolder', bucket: params.bucket, prefix: params.prefix, status: 'error', error: msg, durationMs: Date.now() - t })
       return { ok: false as const, error: msg }
     }
   })
@@ -191,10 +340,53 @@ export function registerIpc() {
     try {
       await s3.createFolder(params.bucket, params.prefix)
       getLogger().info('ipc', 's3:createFolder ok', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix })
+      emitAwsEvent({ scope: 's3', action: 'CreateFolder', bucket: params.bucket, prefix: params.prefix, status: 'ok', durationMs: Date.now() - t })
       return { ok: true as const }
     } catch (e) {
       const msg = (e as Error)?.message || 'Failed to create folder'
       getLogger().warn('ipc', 's3:createFolder error', { durationMs: Date.now() - t, bucket: params.bucket, prefix: params.prefix, error: msg })
+      emitAwsEvent({ scope: 's3', action: 'CreateFolder', bucket: params.bucket, prefix: params.prefix, status: 'error', error: msg, durationMs: Date.now() - t })
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle(IpcChannels.S3_COPY_OBJECT, async (_e, params) => {
+    const t = Date.now()
+    try {
+      await s3.copyObject(params)
+      getLogger().info('ipc', 's3:copyObject ok', {
+        durationMs: Date.now() - t,
+        sourceBucket: params.sourceBucket,
+        sourceKey: params.sourceKey,
+        destinationBucket: params.destinationBucket,
+        destinationKey: params.destinationKey
+      })
+      emitAwsEvent({ scope: 's3', action: 'CopyObject', bucket: params.destinationBucket, key: params.destinationKey, status: 'ok', durationMs: Date.now() - t, extra: { sourceBucket: params.sourceBucket, sourceKey: params.sourceKey } })
+      return { ok: true as const }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to copy object'
+      getLogger().warn('ipc', 's3:copyObject error', {
+        durationMs: Date.now() - t,
+        sourceBucket: params.sourceBucket,
+        sourceKey: params.sourceKey,
+        destinationBucket: params.destinationBucket,
+        destinationKey: params.destinationKey,
+        error: msg
+      })
+      emitAwsEvent({ scope: 's3', action: 'CopyObject', bucket: params.destinationBucket, key: params.destinationKey, status: 'error', error: msg, durationMs: Date.now() - t, extra: { sourceBucket: params.sourceBucket, sourceKey: params.sourceKey } })
+      return { ok: false as const, error: msg }
+    }
+  })
+  registerStartObjectActionHandler(IpcChannels.S3_START_OBJECT_ACTION)
+  registerStartObjectActionHandler('s3:StartObjectAction')
+  ipcMain.handle(IpcChannels.S3_CANCEL_OBJECT_ACTION, async (_e, params) => {
+    try {
+      s3.cancelObjectAction(params.operationId)
+      emitAwsEvent({ scope: 's3', action: 'CancelObjectAction', status: 'ok', extra: { operationId: params.operationId } })
+      return { ok: true as const }
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Failed to abort object action'
+      emitAwsEvent({ scope: 's3', action: 'CancelObjectAction', status: 'error', error: msg, extra: { operationId: params.operationId } })
       return { ok: false as const, error: msg }
     }
   })

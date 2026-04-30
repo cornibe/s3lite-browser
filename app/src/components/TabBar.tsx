@@ -18,7 +18,7 @@ function CloseIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
 }
 
 export default function TabBar() {
-  const { tabs, tabOrder, activeTabId, activateTab, newTab, closeTab } = useStore() as any
+  const { tabs, tabOrder, activeTabId, activateTab, prewarmTabProfile, newTab, closeTab } = useStore() as any
   const items = useMemo(() => tabOrder.map((id: string) => tabs[id]).filter(Boolean), [tabs, tabOrder])
 
   // Pre-compute how many tabs exist per profile name
@@ -57,6 +57,8 @@ export default function TabBar() {
               <div
                 key={t.id}
                 onClick={() => activateTab(t.id)}
+                onMouseEnter={() => prewarmTabProfile(t.id)}
+                onFocus={() => prewarmTabProfile(t.id)}
                 className={`tab-btn ${active ? 'tab-btn-active' : ''} group flex items-center gap-2 cursor-pointer`}
                 role="tab"
                 aria-selected={active}
