@@ -299,11 +299,14 @@ export interface RendererAPI {
   }
   env: {
     isDev(): boolean
+    platform(): string
   }
   ui: {
     pickCredentialsFile(): Promise<string | undefined>
     pickDirectory(options?: { title?: string; defaultPath?: string }): Promise<string | undefined>
     processDroppedFiles(fileData: Array<{ name: string; size: number; type: string }>): Promise<Array<{ path: string; size: number; name: string }>>
+  popupAppMenu(params: { section: 'file' | 'view' | 'help'; x: number; y: number }): Promise<{ ok: true } | { ok: false; error: string }>
+  setTitleBarTheme(params: { darkMode: boolean }): Promise<{ ok: true }>
   onOpenSettings(cb: () => void): () => void
   onOpenProfiles(cb: () => void): () => void
   showMessageBox(options: { type?: 'none' | 'info' | 'error' | 'question' | 'warning'; title?: string; message: string; detail?: string; buttons?: string[] }): Promise<{ response: number }>
@@ -375,6 +378,8 @@ export const IpcChannels = {
 
 // Custom UI utility channels (non-S3) can be extended here
 export const ExtraIpcChannels = {
+  UI_POPUP_APP_MENU: 'ui:popupAppMenu',
+  UI_SET_TITLEBAR_THEME: 'ui:setTitleBarTheme',
   UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList',
   SETTINGS_LOAD: 'settings:load',
   SETTINGS_SAVE: 'settings:save',

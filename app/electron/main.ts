@@ -1,16 +1,95 @@
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
+import type { MenuItemConstructorOptions } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { registerIpc } from './ipc'
 import { openSettingsDir } from './settings'
 import { getLogger, initLogger } from './log'
+import { ExtraIpcChannels } from './types'
 
 let mainWindow: BrowserWindow | null = null
+
+type AppMenuSection = 'file' | 'view' | 'help'
+
+function getTitleBarOverlayOptions(darkMode: boolean) {
+  return {
+    color: darkMode ? '#151a21' : '#eef2f6',
+    symbolColor: darkMode ? '#cbd5e1' : '#334155',
+    height: 36
+  }
+}
+
+function createFileMenu(): MenuItemConstructorOptions[] {
+  if (process.platform === 'darwin') return []
+  return [{ role: 'quit' }]
+}
+
+function createViewMenu(): MenuItemConstructorOptions[] {
+  return [
+    { role: 'reload' },
+    { role: 'toggleDevTools' },
+    { type: 'separator' },
+    {
+      label: 'Settings',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.webContents.send('ui:openSettings')
+        }
+      }
+    },
+    {
+      label: 'AWS Profiles',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.webContents.send('ui:openProfiles')
+        }
+      }
+    },
+    {
+      label: 'Open Logs Folder',
+      click: async () => { await getLogger().openLogsFolder() }
+    },
+    {
+      label: 'Open Settings Folder',
+      click: async () => { await openSettingsDir() }
+    }
+  ]
+}
+
+function createHelpMenu(): MenuItemConstructorOptions[] {
+  if (process.platform === 'darwin') return []
+  return [
+    {
+      label: 'About',
+      click: () => { app.showAboutPanel() }
+    }
+  ]
+}
+
+function popupMenuSection(section: AppMenuSection, win: BrowserWindow, x: number, y: number) {
+  const submenu = section === 'file'
+    ? createFileMenu()
+    : section === 'view'
+      ? createViewMenu()
+      : createHelpMenu()
+
+  if (submenu.length === 0) {
+    return { ok: false as const, error: `Menu section not available: ${section}` }
+  }
+
+  const menu = Menu.buildFromTemplate(submenu)
+  menu.popup({ window: win, x, y })
+  return { ok: true as const }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#151a21',
+    autoHideMenuBar: process.platform === 'win32',
+    titleBarStyle: process.platform === 'win32' ? 'hidden' : undefined,
+    titleBarOverlay: process.platform === 'win32' ? getTitleBarOverlayOptions(true) : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -86,7 +165,7 @@ async function setup() {
     getLogger().warn('about', 'failed to set about panel options', { message: (err as Error)?.message })
   }
 
-  const template = [
+  const template: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin' ? [{
       label: app.getName(),
       submenu: [
@@ -98,40 +177,13 @@ async function setup() {
     // File menu (Win/Linux): add Quit
     ...(process.platform !== 'darwin' ? [{
       label: 'File',
-      submenu: [
-        { role: 'quit' as const }
-      ]
+      submenu: createFileMenu()
     }] : []),
     {
       label: 'View',
       submenu: [
-        { role: 'reload' as const },
-        { role: 'toggleDevTools' as const },
+        ...createViewMenu(),
         { type: 'separator' as const },
-        {
-          label: 'Settings',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('ui:openSettings')
-            }
-          }
-        },
-        {
-          label: 'AWS Profiles',
-          click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('ui:openProfiles')
-            }
-          }
-        },
-        {
-          label: 'Open Logs Folder',
-          click: async () => { await getLogger().openLogsFolder() }
-        },
-        {
-          label: 'Open Settings Folder',
-          click: async () => { await openSettingsDir() }
-        },
         {
           label: 'Logging',
           submenu: [
@@ -161,15 +213,23 @@ async function setup() {
     ...(process.platform !== 'darwin' ? [{
       label: 'Help',
       role: 'help' as const,
-      submenu: [
-        {
-          label: 'About',
-          click: () => { app.showAboutPanel() }
-        }
-      ]
+      submenu: createHelpMenu()
     }] : [])
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+
+  ipcMain.handle(ExtraIpcChannels.UI_POPUP_APP_MENU, (event, params: { section: AppMenuSection; x: number; y: number }) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return { ok: false as const, error: 'Window not found' }
+    return popupMenuSection(params.section, win, Math.round(params.x), Math.round(params.y))
+  })
+  ipcMain.handle(ExtraIpcChannels.UI_SET_TITLEBAR_THEME, (event, params: { darkMode: boolean }) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && process.platform === 'win32') {
+      win.setTitleBarOverlay(getTitleBarOverlayOptions(Boolean(params.darkMode)))
+    }
+    return { ok: true as const }
+  })
 
   registerIpc()
   await createWindow()

@@ -7,19 +7,26 @@
   html, body, #root { height: 100%; }
   /* Theme tokens (light) */
   :root {
+  font-family: "IBM Plex Sans", "Segoe UI Variable", "Segoe UI", sans-serif;
   --color-bg: #ffffff;
-  --color-panel: #fafafa; /* light gray to avoid all-white */
-  --color-header: #f0f0f0; /* slightly darker header for contrast */
+  --color-panel: #f7f8fa;
+  --color-header: #eef2f6;
     --color-fg: #171717;
-    --color-fg-muted: #6b7280; /* neutral-500 */
-  --color-border: #d1d5db;   /* neutral-300 for stronger separators */
-    --color-hover: #f5f5f5;    /* neutral-50 */
-    --color-selected: #094771; /* VSCode selection */
-    --color-accent: #0e639c;   /* VSCode blue */
+    --color-fg-muted: #667085;
+  --color-border: #d6dce5;
+    --color-hover: #edf2f7;
+    --color-selected: #0b5cad;
+    --color-accent: #0b6fbf;
     --color-input-bg: #ffffff;
     --color-overlay: rgba(255, 255, 255, 0.6);
     --color-menu: #ffffff;
     --color-placeholder: #6b7280;
+  --color-panel-strong: #ffffff;
+  --color-tab-idle: rgba(15, 23, 42, 0.04);
+  --color-toolbar: rgba(255, 255, 255, 0.78);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.06);
+  --app-gradient: radial-gradient(circle at top left, rgba(11, 111, 191, 0.08), transparent 28%), radial-gradient(circle at top right, rgba(14, 116, 144, 0.08), transparent 24%);
   /* Alert semantic tokens (light) */
   --color-error-bg: #fee2e2;      /* red-100 */
   --color-error-border: #fecaca;  /* red-200 */
@@ -42,18 +49,24 @@
   /* Theme tokens (dark) */
   html.dark, :root:where([data-theme="dark"]) {
     --color-bg: #1e1e1e;
-    --color-panel: #1e1e1e;
-    --color-header: #252526;
+    --color-panel: #151a21;
+    --color-header: #1c232d;
     --color-fg: #cccccc;
-    --color-fg-muted: #a3a3a3;
-    --color-border: #323233;
-    --color-hover: #2a2d2e;
-    --color-selected: #094771;
+    --color-fg-muted: #98a4b3;
+    --color-border: #2d3745;
+    --color-hover: #222c38;
+    --color-selected: #0f4f88;
     --color-accent: #3794ff;
-    --color-input-bg: #1e1e1e;
+    --color-input-bg: #11161d;
     --color-overlay: rgba(0, 0, 0, 0.4);
-    --color-menu: #252526;
+    --color-menu: #11161d;
     --color-placeholder: #9ca3af;
+  --color-panel-strong: #11161d;
+  --color-tab-idle: rgba(255, 255, 255, 0.04);
+  --color-toolbar: rgba(17, 22, 29, 0.8);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.22);
+  --app-gradient: radial-gradient(circle at top left, rgba(55, 148, 255, 0.11), transparent 26%), radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 22%);
   /* Alert semantic tokens (dark) */
   --color-error-bg: rgba(220, 38, 38, 0.18);
   --color-error-border: #7f1d1d;
@@ -74,7 +87,14 @@
   }
 
   /* Set base background/text colors for both themes */
-  body { background-color: var(--color-bg); color: var(--color-fg); }
+  body {
+    background-color: var(--color-bg);
+    background-image: var(--app-gradient);
+    color: var(--color-fg);
+    font-family: inherit;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
   /* Global scrollbar styling (WebKit + Firefox) */
   * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
   *::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -94,6 +114,7 @@
   .bg-app { background-color: var(--color-bg); }
   .bg-panel { background-color: var(--color-panel); }
   .bg-header { background-color: var(--color-header); }
+  .bg-panel-strong { background-color: var(--color-panel-strong); }
   .text-app { color: var(--color-fg); }
   .text-muted { color: var(--color-fg-muted); }
   .border-default { border-color: var(--color-border); }
@@ -109,18 +130,133 @@
   .overlay-bg { background-color: var(--color-overlay); }
   .menu-bg { background-color: var(--color-menu); }
 
+  .app-shell { position: relative; isolation: isolate; }
+  .app-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-header) 82%, transparent) 0%, transparent 34%),
+      radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 36%);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .surface-panel {
+    background-color: color-mix(in srgb, var(--color-panel-strong) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border) 92%, transparent);
+  }
+
+  .surface-muted {
+    background-color: color-mix(in srgb, var(--color-header) 82%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
+  }
+
+  .toolbar-surface {
+    background-color: var(--color-toolbar);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .drag-region { -webkit-app-region: drag; }
+  .no-drag, .no-drag * { -webkit-app-region: no-drag; }
+
+  .menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.9rem;
+    padding: 0 0.625rem;
+    border-radius: 0.5rem;
+    color: var(--color-fg-muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .menu-trigger:hover,
+  .menu-trigger[data-active="true"] {
+    background-color: color-mix(in srgb, var(--color-hover) 90%, transparent);
+    color: var(--color-fg);
+  }
+  .menu-trigger:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 70%, transparent);
+    outline-offset: 1px;
+  }
+
+  .section-kicker {
+    color: var(--color-fg-muted);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .subtle-separator {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-border) 94%, transparent), transparent);
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 999px;
+    padding: 0.1875rem 0.5rem;
+    background-color: color-mix(in srgb, var(--color-header) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border) 88%, transparent);
+    color: var(--color-fg-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    white-space: nowrap;
+  }
+
+  .status-pill-strong {
+    color: var(--color-fg);
+    background-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-header));
+    border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+  }
+
   .input-theme { background-color: var(--color-input-bg); color: var(--color-fg); border-color: var(--color-border); }
+  .input-theme {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+  }
   .input-theme::placeholder { color: var(--color-placeholder); opacity: 0.9; }
+  .input-theme:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--color-accent) 68%, var(--color-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
 
   /* Button utilities */
-  .btn { padding: 0.375rem 0.75rem; font-size: 0.875rem; border-radius: 0.375rem; line-height: 1.25rem; cursor: pointer; }
-  .btn-secondary { background-color: var(--color-header); color: var(--color-fg); border: 1px solid var(--color-border); }
+  .btn {
+    padding: 0.4375rem 0.8rem;
+    font-size: 0.875rem;
+    border-radius: 0.625rem;
+    line-height: 1.25rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-0.5px); }
+  .btn-secondary {
+    background-color: color-mix(in srgb, var(--color-header) 84%, transparent);
+    color: var(--color-fg);
+    border: 1px solid color-mix(in srgb, var(--color-border) 92%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
   .btn-secondary:hover { background-color: var(--color-hover); }
-  .btn-primary { background-color: #0e639c; color: #ffffff; }
-  .btn-primary:hover { background-color: #1177bb; }
+  .btn-primary {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 86%, white 10%), var(--color-accent));
+    color: #ffffff;
+  }
+  .btn-primary:hover { background-color: color-mix(in srgb, var(--color-accent) 92%, black 8%); }
   .btn-danger { background-color: #b91c1c; color: #ffffff; }
   .btn-danger:hover { background-color: #a31616; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 75%, transparent);
+    outline-offset: 2px;
+  }
 
   /* Icon-only button utilities: subtle and consistent across toolbars/panels */
   .icon-btn {
@@ -148,6 +284,21 @@
   .icon-btn-sm { padding: 0.125rem; }
   .icon-btn-md { padding: 0.25rem; }
 
+  .panel-resizer {
+    border: 0;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-border) 18%, transparent), color-mix(in srgb, var(--color-border) 42%, transparent), color-mix(in srgb, var(--color-border) 18%, transparent));
+    color: var(--color-fg-muted);
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .panel-resizer:hover {
+    background: color-mix(in srgb, var(--color-accent) 20%, var(--color-header));
+    color: var(--color-accent);
+  }
+  .panel-resizer:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 68%, transparent);
+    outline-offset: -1px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .icon-btn { transition: none; }
     .icon-btn:active:not(:disabled) { transform: none; }
@@ -162,10 +313,10 @@
     padding: 0.375rem 0.875rem;
     font-size: 0.875rem;
     line-height: 1.25rem;
-    background-color: transparent;
+    background-color: var(--color-tab-idle);
     color: var(--color-fg-muted);
-    border: none;
-    border-radius: 6px 6px 0 0;
+    border: 1px solid transparent;
+    border-radius: 0.75rem 0.75rem 0 0;
     transition: all 120ms ease;
     margin-right: 2px;
     min-width: 100px;
@@ -184,8 +335,9 @@
   
   /* Active tab */
   .tab-btn.tab-btn-active {
-    background-color: var(--color-bg);
+    background-color: color-mix(in srgb, var(--color-panel-strong) 96%, transparent);
     color: var(--color-fg);
+    border-color: color-mix(in srgb, var(--color-border) 90%, transparent);
     box-shadow: inset 0 -2px 0 0 var(--color-accent);
   }
   

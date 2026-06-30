@@ -44,6 +44,8 @@ const Channels = {
 } as const
 
 const ExtraChannels = {
+  UI_POPUP_APP_MENU: 'ui:popupAppMenu',
+  UI_SET_TITLEBAR_THEME: 'ui:setTitleBarTheme',
   UI_EXPORT_OBJECT_LIST: 'ui:exportObjectList',
   SETTINGS_LOAD: 'settings:load',
   SETTINGS_SAVE: 'settings:save',
@@ -78,7 +80,8 @@ const api: RendererAPI = {
     }
   },
   env: {
-    isDev: () => process.env.NODE_ENV !== 'production'
+    isDev: () => process.env.NODE_ENV !== 'production',
+    platform: () => process.platform
   },
   ui: {
     pickCredentialsFile: () => ipcRenderer.invoke(Channels.UI_PICK_CREDENTIALS),
@@ -93,6 +96,8 @@ const api: RendererAPI = {
       return ipcRenderer.invoke(Channels.UI_PROCESS_DROPPED_FILES, fileData)
     },
   showMessageBox: (options) => ipcRenderer.invoke(Channels.UI_MESSAGE_BOX, options),
+  popupAppMenu: (params) => ipcRenderer.invoke(ExtraChannels.UI_POPUP_APP_MENU, params),
+  setTitleBarTheme: (params) => ipcRenderer.invoke(ExtraChannels.UI_SET_TITLEBAR_THEME, params),
   onOpenSettings: (cb: () => void) => {
       const handler = () => cb()
       ipcRenderer.on(Channels.UI_OPEN_SETTINGS, handler)

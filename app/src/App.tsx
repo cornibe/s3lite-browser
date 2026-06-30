@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
+import AppMenuBar from './components/AppMenuBar'
 import TabBar from './components/TabBar'
 import SidebarBuckets from './components/SidebarBuckets'
 import ObjectExplorer from './components/ObjectExplorer'
@@ -30,6 +31,10 @@ export default function App() {
   document.documentElement.classList.remove('dark')
   document.body.classList.remove('dark')
     }
+  }, [settings.darkMode])
+
+  useEffect(() => {
+    void window.api.ui.setTitleBarTheme({ darkMode: Boolean(settings.darkMode) })
   }, [settings.darkMode])
 
   // Ensure dark mode is applied immediately on app load
@@ -85,7 +90,8 @@ export default function App() {
   const compact = Boolean(settings.compactMode)
   return (
     <div ref={containerRef} className={`${dark ? 'dark' : ''} ${compact ? 'compact' : ''} h-full`}>
-      <div className="h-full flex flex-col overflow-hidden bg-app text-app">
+      <div className="app-shell h-full flex flex-col overflow-hidden bg-app text-app">
+  <AppMenuBar />
   {/* Tabs above the bucket toolbar */}
   <TabBar />
         {/* Main area: sidebar | resizer | content */}
@@ -97,7 +103,7 @@ export default function App() {
           <button
             aria-label="Resize sidebar"
             onMouseDown={startSidebarDrag}
-            className={`w-1.5 cursor-col-resize flex items-center justify-center select-none ${dark ? 'bg-[#2a2d2e] hover:bg-[#323233]' : 'bg-neutral-200 hover:bg-neutral-300'}`}
+            className="panel-resizer w-1.5 cursor-col-resize flex items-center justify-center select-none"
             title="Drag to resize"
           >
             <svg className="w-3 h-3 opacity-70" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -112,7 +118,7 @@ export default function App() {
         <button
           aria-label="Resize transfer queue"
           onMouseDown={startQueueDrag}
-          className={`h-1.5 cursor-row-resize flex items-center justify-center select-none ${dark ? 'bg-[#2a2d2e] hover:bg-[#323233]' : 'bg-neutral-200 hover:bg-neutral-300'}`}
+          className="panel-resizer h-1.5 cursor-row-resize flex items-center justify-center select-none"
           title="Drag to resize"
         >
           <svg className="w-3 h-3 opacity-70" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
